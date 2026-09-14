@@ -1,4 +1,5 @@
 import os
+import sys
 import time
 import glob
 import asyncio
@@ -7,20 +8,24 @@ from aiohttp import web
 from telethon import TelegramClient, events
 from telethon.sessions import StringSession
 
+# Flush print immediately
+def log(text):
+    print(text, flush=True)
+
 API_ID = int(os.environ.get("API_ID", 0))
 API_HASH = os.environ.get("API_HASH", "")
 STRING_SESSION = os.environ.get("STRING_SESSION", "").strip()
 
-print(f"DEBUG: API_ID={'SET' if API_ID else 'MISSING'}, HASH={'SET' if API_HASH else 'MISSING'}, SESSION={'SET' if STRING_SESSION else 'MISSING'}")
+log(f"--- BOT INITIALIZING ---")
+log(f"API_ID: {'PRESENT' if API_ID else 'EMPTY'}")
+log(f"API_HASH: {'PRESENT' if API_HASH else 'EMPTY'}")
+log(f"STRING_SESSION: {'PRESENT' if STRING_SESSION else 'EMPTY'}")
 
 if not STRING_SESSION:
-    print("CRITICAL ERROR: STRING_SESSION Render ke Environment me set nahi hai!")
-    import config
-    API_ID = config.API_ID
-    API_HASH = config.API_HASH
-    client = TelegramClient('userbot_session', API_ID, API_HASH)
-else:
-    client = TelegramClient(StringSession(STRING_SESSION), API_ID, API_HASH)
+    log("FATAL: STRING_SESSION is missing from Environment Variables!")
+    sys.exit(1)
+
+client = TelegramClient(StringSession(STRING_SESSION), API_ID, API_HASH)
 
 @client.on(events.NewMessage(outgoing=True, pattern=r'^\.ping$'))
 async def ping(event):
@@ -30,6 +35,7 @@ async def ping(event):
     ms = round((end - start) * 1000, 2)
     await msg.edit(f"🔥 **Pong!**\n⚡ Latency: `{ms} ms`")
 
+# Load plugins
 plugin_files = glob.glob("plugins/*.py")
 for file in plugin_files:
     mod_name = file.replace("/", ".").replace(".py", "")
@@ -37,14 +43,14 @@ for file in plugin_files:
         mod = importlib.import_module(mod_name)
         if hasattr(mod, "setup"):
             mod.setup(client)
-            print(f"Loaded plugin: {mod_name}")
+            log(f"Plugin loaded: {mod_name}")
     except Exception as e:
-        print(f"Plugin error in {mod_name}: {e}")
+        log(f"Failed to load {mod_name}: {e}")
 
 async def handle_ping(request):
     return web.Response(text="Userbot is running!")
 
-async def start_web_server():
+async def start_server():
     app = web.Application()
     app.router.add_get("/", handle_ping)
     runner = web.AppRunner(app)
@@ -52,19 +58,19 @@ async def start_web_server():
     port = int(os.environ.get("PORT", 10000))
     site = web.TCPSite(runner, "0.0.0.0", port)
     await site.start()
-    print(f"==> Web server listening on port {port}")
+    log(f"Web server bound on port {port}")
 
-async def main():
-    await start_web_server()
-    print(">>> Connecting Telegram Client...")
-    await client.connect()
-    if not await client.is_user_authorized():
-        print("CRITICAL: Client is NOT authorized! Check STRING_SESSION.")
-        return
-    print(">>> Userbot 24/7 LIVE on Render successfully!")
+async def start_bot():
+    log("Starting Telethon Client connection...")
+    await client.start()
+    me = await client.get_me()
+    log(f"SUCCESS: Logged in as {me.first_name} (ID: {me.id})")
+    log(">>> USERBOT IS NOW FULLY LIVE & READY FOR COMMANDS! <<<")
     await client.run_until_disconnected()
 
+async def main():
+    await start_server()
+    await start_bot()
+
 if __name__ == "__main__":
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    loop.run_until_complete(main())
+    asyncio.run(main())
