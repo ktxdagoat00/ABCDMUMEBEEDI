@@ -3,24 +3,31 @@ import sys
 import time
 import glob
 import asyncio
+import logging
 import importlib
 from aiohttp import web
 from telethon import TelegramClient, events
 from telethon.sessions import StringSession
 
-def log(text):
-    print(text, flush=True)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
 API_ID = int(os.environ.get("API_ID", 0))
 API_HASH = os.environ.get("API_HASH", "")
 STRING_SESSION = os.environ.get("STRING_SESSION", "").strip()
 
-log(f"--- BOT INITIALIZING ---")
 if not STRING_SESSION or not API_ID:
-    log("FATAL: STRING_SESSION ya API_ID missing hai!")
+    print("FATAL: STRING_SESSION ya API_ID missing hai!", flush=True)
     sys.exit(1)
 
-client = TelegramClient(StringSession(STRING_SESSION), API_ID, API_HASH)
+# Force IPv4 to prevent cloud socket freeze
+client = TelegramClient(
+    StringSession(STRING_SESSION),
+    API_ID,
+    API_HASH,
+    use_ipv6=False,
+    connection_retries=5,
+    timeout=15
+)
 
 @client.on(events.NewMessage(outgoing=True, pattern=r'^\.ping$'))
 async def ping(event):
@@ -30,7 +37,6 @@ async def ping(event):
     ms = round((end - start) * 1000, 2)
     await msg.edit(f"🔥 **Pong!**\n⚡ Latency: `{ms} ms`")
 
-# Load plugins
 plugin_files = glob.glob("plugins/*.py")
 for file in plugin_files:
     mod_name = file.replace("/", ".").replace(".py", "")
@@ -38,9 +44,9 @@ for file in plugin_files:
         mod = importlib.import_module(mod_name)
         if hasattr(mod, "setup"):
             mod.setup(client)
-            log(f"Loaded plugin: {mod_name}")
+            print(f"Loaded plugin: {mod_name}", flush=True)
     except Exception as e:
-        log(f"Plugin load error: {e}")
+        print(f"Plugin load error in {mod_name}: {e}", flush=True)
 
 async def handle_ping(request):
     return web.Response(text="Userbot is running!")
@@ -53,20 +59,27 @@ async def start_web_server():
     port = int(os.environ.get("PORT", 10000))
     site = web.TCPSite(runner, "0.0.0.0", port)
     await site.start()
-    log(f"Web server active on port {port}")
+    print(f"==> Web server listening on port {port}", flush=True)
 
 async def main():
     await start_web_server()
-    log("Connecting to Telegram...")
-    await client.connect()
-    
+    print(">>> Initializing Telegram Client Handshake...", flush=True)
+    try:
+        await asyncio.wait_for(client.connect(), timeout=25.0)
+    except asyncio.TimeoutError:
+        print("ERROR: Connection to Telegram timed out!", flush=True)
+        return
+    except Exception as err:
+        print(f"ERROR while connecting: {err}", flush=True)
+        return
+
     if not await client.is_user_authorized():
-        log("❌ CRITICAL: String Session invalid ya expired hai! Nayi session generate karni padegi.")
+        print("❌ CRITICAL: String session is not authorized or expired!", flush=True)
         return
 
     me = await client.get_me()
-    log(f"✅ SUCCESS: Logged in as {me.first_name} (@{me.username or 'NoUsername'})")
-    log(">>> 🚀 USERBOT IS OFFICIALLY RUNNING 24/7! <<<")
+    print(f"✅ SUCCESS: Connected as {me.first_name} (@{me.username or 'NoUsername'})", flush=True)
+    print(">>> 🚀 USERBOT IS LIVE AND LISTENING! <<<", flush=True)
     await client.run_until_disconnected()
 
 if __name__ == "__main__":
