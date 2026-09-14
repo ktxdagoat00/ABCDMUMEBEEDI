@@ -1,7 +1,9 @@
 import os
 import time
 import glob
+import asyncio
 import importlib
+from aiohttp import web
 from telethon import TelegramClient, events
 from telethon.sessions import StringSession
 
@@ -32,6 +34,24 @@ for file in plugin_files:
     if hasattr(mod, "setup"):
         mod.setup(client)
 
-print(">>> Userbot LIVE!")
-client.start()
-client.run_until_disconnected()
+# Web health check server for Render free tier
+async def handle_ping(request):
+    return web.Response(text="Userbot is running!")
+
+async def start_web():
+    app = web.Application()
+    app.router.add_get("/", handle_ping)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    port = int(os.environ.get("PORT", 8080))
+    site = web.TCPSite(runner, "0.0.0.0", port)
+    await site.start()
+
+async def main():
+    await client.start()
+    await start_web()
+    print(">>> Userbot 24/7 LIVE on Free Web Service!")
+    await client.run_until_disconnected()
+
+if __name__ == "__main__":
+    asyncio.run(main())
