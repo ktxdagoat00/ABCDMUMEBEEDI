@@ -8,7 +8,6 @@ from aiohttp import web
 from telethon import TelegramClient, events
 from telethon.sessions import StringSession
 
-# Flush print immediately
 def log(text):
     print(text, flush=True)
 
@@ -17,12 +16,8 @@ API_HASH = os.environ.get("API_HASH", "")
 STRING_SESSION = os.environ.get("STRING_SESSION", "").strip()
 
 log(f"--- BOT INITIALIZING ---")
-log(f"API_ID: {'PRESENT' if API_ID else 'EMPTY'}")
-log(f"API_HASH: {'PRESENT' if API_HASH else 'EMPTY'}")
-log(f"STRING_SESSION: {'PRESENT' if STRING_SESSION else 'EMPTY'}")
-
-if not STRING_SESSION:
-    log("FATAL: STRING_SESSION is missing from Environment Variables!")
+if not STRING_SESSION or not API_ID:
+    log("FATAL: STRING_SESSION ya API_ID missing hai!")
     sys.exit(1)
 
 client = TelegramClient(StringSession(STRING_SESSION), API_ID, API_HASH)
@@ -43,14 +38,14 @@ for file in plugin_files:
         mod = importlib.import_module(mod_name)
         if hasattr(mod, "setup"):
             mod.setup(client)
-            log(f"Plugin loaded: {mod_name}")
+            log(f"Loaded plugin: {mod_name}")
     except Exception as e:
-        log(f"Failed to load {mod_name}: {e}")
+        log(f"Plugin load error: {e}")
 
 async def handle_ping(request):
     return web.Response(text="Userbot is running!")
 
-async def start_server():
+async def start_web_server():
     app = web.Application()
     app.router.add_get("/", handle_ping)
     runner = web.AppRunner(app)
@@ -58,19 +53,23 @@ async def start_server():
     port = int(os.environ.get("PORT", 10000))
     site = web.TCPSite(runner, "0.0.0.0", port)
     await site.start()
-    log(f"Web server bound on port {port}")
-
-async def start_bot():
-    log("Starting Telethon Client connection...")
-    await client.start()
-    me = await client.get_me()
-    log(f"SUCCESS: Logged in as {me.first_name} (ID: {me.id})")
-    log(">>> USERBOT IS NOW FULLY LIVE & READY FOR COMMANDS! <<<")
-    await client.run_until_disconnected()
+    log(f"Web server active on port {port}")
 
 async def main():
-    await start_server()
-    await start_bot()
+    await start_web_server()
+    log("Connecting to Telegram...")
+    await client.connect()
+    
+    if not await client.is_user_authorized():
+        log("❌ CRITICAL: String Session invalid ya expired hai! Nayi session generate karni padegi.")
+        return
+
+    me = await client.get_me()
+    log(f"✅ SUCCESS: Logged in as {me.first_name} (@{me.username or 'NoUsername'})")
+    log(">>> 🚀 USERBOT IS OFFICIALLY RUNNING 24/7! <<<")
+    await client.run_until_disconnected()
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    loop.run_until_complete(main())
