@@ -3,30 +3,24 @@ import sys
 import time
 import glob
 import asyncio
-import logging
 import importlib
 from aiohttp import web
 from telethon import TelegramClient, events
 from telethon.sessions import StringSession
-
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
 API_ID = int(os.environ.get("API_ID", 0))
 API_HASH = os.environ.get("API_HASH", "")
 STRING_SESSION = os.environ.get("STRING_SESSION", "").strip()
 
 if not STRING_SESSION or not API_ID:
-    print("FATAL: STRING_SESSION ya API_ID missing hai!", flush=True)
+    print("FATAL: STRING_SESSION ya API_ID missing!", flush=True)
     sys.exit(1)
 
-# Force IPv4 to prevent cloud socket freeze
 client = TelegramClient(
     StringSession(STRING_SESSION),
     API_ID,
     API_HASH,
-    use_ipv6=False,
-    connection_retries=5,
-    timeout=15
+    use_ipv6=False
 )
 
 @client.on(events.NewMessage(outgoing=True, pattern=r'^\.ping$'))
@@ -46,7 +40,7 @@ for file in plugin_files:
             mod.setup(client)
             print(f"Loaded plugin: {mod_name}", flush=True)
     except Exception as e:
-        print(f"Plugin load error in {mod_name}: {e}", flush=True)
+        print(f"Plugin error: {e}", flush=True)
 
 async def handle_ping(request):
     return web.Response(text="Userbot is running!")
@@ -63,23 +57,16 @@ async def start_web_server():
 
 async def main():
     await start_web_server()
-    print(">>> Initializing Telegram Client Handshake...", flush=True)
-    try:
-        await asyncio.wait_for(client.connect(), timeout=25.0)
-    except asyncio.TimeoutError:
-        print("ERROR: Connection to Telegram timed out!", flush=True)
-        return
-    except Exception as err:
-        print(f"ERROR while connecting: {err}", flush=True)
-        return
-
+    print(">>> Connecting Telegram Client...", flush=True)
+    await client.connect()
+    
     if not await client.is_user_authorized():
-        print("❌ CRITICAL: String session is not authorized or expired!", flush=True)
+        print("❌ CRITICAL: String session unauthorized!", flush=True)
         return
 
     me = await client.get_me()
-    print(f"✅ SUCCESS: Connected as {me.first_name} (@{me.username or 'NoUsername'})", flush=True)
-    print(">>> 🚀 USERBOT IS LIVE AND LISTENING! <<<", flush=True)
+    print(f"✅ SUCCESS: Logged in as {me.first_name}!", flush=True)
+    print(">>> 🚀 USERBOT READY HAI! Telegram me .ping try karo <<<", flush=True)
     await client.run_until_disconnected()
 
 if __name__ == "__main__":
