@@ -9,9 +9,12 @@ from telethon.sessions import StringSession
 
 API_ID = int(os.environ.get("API_ID", 0))
 API_HASH = os.environ.get("API_HASH", "")
-STRING_SESSION = os.environ.get("STRING_SESSION", "")
+STRING_SESSION = os.environ.get("STRING_SESSION", "").strip()
 
-if not API_ID:
+print(f"DEBUG: API_ID={'SET' if API_ID else 'MISSING'}, HASH={'SET' if API_HASH else 'MISSING'}, SESSION={'SET' if STRING_SESSION else 'MISSING'}")
+
+if not STRING_SESSION:
+    print("CRITICAL ERROR: STRING_SESSION Render ke Environment me set nahi hai!")
     import config
     API_ID = config.API_ID
     API_HASH = config.API_HASH
@@ -30,9 +33,13 @@ async def ping(event):
 plugin_files = glob.glob("plugins/*.py")
 for file in plugin_files:
     mod_name = file.replace("/", ".").replace(".py", "")
-    mod = importlib.import_module(mod_name)
-    if hasattr(mod, "setup"):
-        mod.setup(client)
+    try:
+        mod = importlib.import_module(mod_name)
+        if hasattr(mod, "setup"):
+            mod.setup(client)
+            print(f"Loaded plugin: {mod_name}")
+    except Exception as e:
+        print(f"Plugin error in {mod_name}: {e}")
 
 async def handle_ping(request):
     return web.Response(text="Userbot is running!")
@@ -49,8 +56,12 @@ async def start_web_server():
 
 async def main():
     await start_web_server()
-    await client.start()
-    print(">>> Userbot LIVE on Render!")
+    print(">>> Connecting Telegram Client...")
+    await client.connect()
+    if not await client.is_user_authorized():
+        print("CRITICAL: Client is NOT authorized! Check STRING_SESSION.")
+        return
+    print(">>> Userbot 24/7 LIVE on Render successfully!")
     await client.run_until_disconnected()
 
 if __name__ == "__main__":
