@@ -34,23 +34,23 @@ for file in plugin_files:
     if hasattr(mod, "setup"):
         mod.setup(client)
 
-# Web health check server for Render free tier
 async def handle_ping(request):
     return web.Response(text="Userbot is running!")
 
-async def start_web():
+async def main():
+    # Pehle web server start karo taaki Render turant port detect kar le
     app = web.Application()
     app.router.add_get("/", handle_ping)
     runner = web.AppRunner(app)
     await runner.setup()
-    port = int(os.environ.get("PORT", 8080))
+    port = int(os.environ.get("PORT", 10000))
     site = web.TCPSite(runner, "0.0.0.0", port)
     await site.start()
+    print(f">>> Web server listening on port {port}")
 
-async def main():
+    # Ab telethon client start karo
     await client.start()
-    await start_web()
-    print(">>> Userbot 24/7 LIVE on Free Web Service!")
+    print(">>> Userbot 24/7 LIVE on Render!")
     await client.run_until_disconnected()
 
 if __name__ == "__main__":
