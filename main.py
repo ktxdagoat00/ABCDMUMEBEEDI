@@ -35,10 +35,9 @@ for file in plugin_files:
         mod.setup(client)
 
 async def handle_ping(request):
-    return web.Response(text="Userbot is running!")
+    return web.Response(text="Userbot is running perfectly!")
 
-async def main():
-    # Pehle web server start karo taaki Render turant port detect kar le
+async def start_web():
     app = web.Application()
     app.router.add_get("/", handle_ping)
     runner = web.AppRunner(app)
@@ -46,12 +45,14 @@ async def main():
     port = int(os.environ.get("PORT", 10000))
     site = web.TCPSite(runner, "0.0.0.0", port)
     await site.start()
-    print(f">>> Web server listening on port {port}")
+    print(f"Server started on port {port}")
 
-    # Ab telethon client start karo
+async def main():
+    await start_web()
     await client.start()
     print(">>> Userbot 24/7 LIVE on Render!")
     await client.run_until_disconnected()
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(main())
