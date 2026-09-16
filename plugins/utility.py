@@ -46,6 +46,8 @@ def setup(client):
             "╔════「 🛠️ 𝗞𝗘𝗦𝗛𝗔𝗩 𝗖𝗢𝗡𝗧𝗥𝗢𝗟 𝗣𝗔𝗡𝗘𝗟 」════╗\n"
             "║\n"
             "╠─ • .alive        :: Check system status\n"
+        "╠─ • .afk <reason> :: Go Away From Keyboard
+" +
             "╠─ • .ping         :: Check server ping\n"
             "╠─ • .tagall <msg> :: Tag all members\n"
             "╠─ • .cancel       :: Stop active tagall\n"
