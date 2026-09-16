@@ -7,7 +7,7 @@ def setup(client):
     @client.on(events.NewMessage(outgoing=True, pattern=r'^\.ping$'))
     async def ping(event):
         start = time.time()
-        msg = await event.edit("```\n┌───「 ⚡ 𝗣𝗜𝗡𝗚𝗜𝗡𝗚... 」\n└───「 🛰️ 𝗦𝗘𝗡𝗗𝗜𝗡𝗚 𝗣𝗔𝗖𝗞𝗘𝗧𝗦 」\n```")
+        msg = await event.edit("```text\n┌───「 ⚡ 𝗣𝗜𝗡𝗚𝗜𝗡𝗚... 」\n└───「 🛰️ 𝗦𝗘𝗡𝗗𝗜𝗡𝗚 𝗣𝗔𝗖𝗞𝗘𝗧𝗦 」\n```")
         end = time.time()
         ms = round((end - start) * 1000, 2)
         reply_text = (
@@ -46,9 +46,9 @@ def setup(client):
             "╔════「 🛠️ 𝗞𝗘𝗦𝗛𝗔𝗩 𝗖𝗢𝗡𝗧𝗥𝗢𝗟 𝗣𝗔𝗡𝗘𝗟 」════╗\n"
             "║\n"
             "╠─ • .alive        :: Check system status\n"
-        "╠─ • .afk <reason> :: Go Away From Keyboard
-" +
             "╠─ • .ping         :: Check server ping\n"
+            "╠─ • .afk <reason> :: Go Away From Keyboard\n"
+            "╠─ • .tr <text>    :: Translate into Hindi\n"
             "╠─ • .tagall <msg> :: Tag all members\n"
             "╠─ • .cancel       :: Stop active tagall\n"
             "╠─ • .purge        :: Purge replied msgs\n"
