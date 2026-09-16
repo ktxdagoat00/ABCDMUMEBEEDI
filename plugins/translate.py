@@ -5,12 +5,12 @@ import asyncio
 from telethon import events
 
 def fetch_translation(text, target_lang='hi'):
-    url = f"https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl={target_lang}&dt=t&q={urllib.parse.quote(text)}"
-    req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-    with urllib.request.urlopen(req, timeout=10) as response:
+    # Free reliable translation engine immune to cloud IP 429 errors
+    url = f"https://api.mymemory.translated.net/get?q={urllib.parse.quote(text)}&langpair=autodetect|{target_lang}"
+    req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'})
+    with urllib.request.urlopen(req, timeout=12) as response:
         data = json.loads(response.read().decode('utf-8'))
-        # Concatenate all translated parts
-        return "".join([part[0] for part in data[0] if part[0]])
+        return data['responseData']['translatedText']
 
 def setup(client):
 
