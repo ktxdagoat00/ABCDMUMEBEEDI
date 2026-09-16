@@ -8,15 +8,26 @@ from aiohttp import web
 from telethon import TelegramClient, events
 from telethon.sessions import StringSession
 
+# Pehle cloud env dekho, na mile toh local config.py use karo
 API_ID = int(os.environ.get("API_ID", 0))
 API_HASH = os.environ.get("API_HASH", "")
 STRING_SESSION = os.environ.get("STRING_SESSION", "").strip()
 
-if not API_ID or not STRING_SESSION:
-    print("FATAL: API_ID or STRING_SESSION is missing!", flush=True)
-    sys.exit(1)
+if not API_ID or not API_HASH:
+    try:
+        import config
+        API_ID = config.API_ID
+        API_HASH = config.API_HASH
+        print("Using local config.py credentials", flush=True)
+    except Exception:
+        print("FATAL: API_ID / API_HASH nahi mila!", flush=True)
+        sys.exit(1)
 
-client = TelegramClient(StringSession(STRING_SESSION), API_ID, API_HASH)
+# Codespace me session file use hogi, cloud pe StringSession
+if STRING_SESSION:
+    client = TelegramClient(StringSession(STRING_SESSION), API_ID, API_HASH)
+else:
+    client = TelegramClient('userbot_session', API_ID, API_HASH)
 
 @client.on(events.NewMessage(outgoing=True, pattern=r'^\.ping$'))
 async def ping(event):
@@ -26,7 +37,6 @@ async def ping(event):
     ms = round((end - start) * 1000, 2)
     await msg.edit(f"🔥 **Pong!**\n⚡ Latency: `{ms} ms`")
 
-# Load plugins
 for file in glob.glob("plugins/*.py"):
     mod_name = file.replace("/", ".").replace(".py", "")
     try:
@@ -48,24 +58,19 @@ async def start_web():
     port = int(os.environ.get("PORT", 10000))
     site = web.TCPSite(runner, "0.0.0.0", port)
     await site.start()
-    print(f"[WEB] Bound to port {port}", flush=True)
+    print(f"[WEB] Port {port} active", flush=True)
 
 async def start_telegram():
     print("[TG] Connecting client...", flush=True)
-    await client.connect()
-    authorized = await client.is_user_authorized()
-    if not authorized:
-        print("❌ [TG ERROR] Session string invalid ya expire ho chuki hai!", flush=True)
-        return
+    await client.start()
     me = await client.get_me()
-    print(f"✅ [TG SUCCESS] Logged in as: {me.first_name} (@{me.username})", flush=True)
-    print(">>> BOT READY HAI: Telegram me .ping bhejo! <<<", flush=True)
+    print(f"✅ [SUCCESS] Logged in as: {me.first_name} (@{me.username or 'NoUsername'})", flush=True)
+    print(">>> 🚀 BOT IS RUNNING! Telegram me .ping try karo <<<", flush=True)
 
 async def main():
     await start_web()
-    asyncio.create_task(start_telegram())
-    while True:
-        await asyncio.sleep(3600)
+    await start_telegram()
+    await client.run_until_disconnected()
 
 if __name__ == "__main__":
     loop = asyncio.new_event_loop()
