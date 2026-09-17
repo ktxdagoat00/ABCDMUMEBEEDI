@@ -26,60 +26,72 @@ def setup(client):
         chat = await event.get_input_chat()
         await event.delete()
 
-        status_msg = await event.respond("```text\n[🧹] Scanning & purging user messages...\n```")
+        status_msg = await event.respond("```text\n[🧹] Scanning & purging all user messages...\n```")
         deleted_count = 0
         batch = []
 
-        async for msg in client.iter_messages(chat, from_user=target_user, limit=500):
+        async for msg in client.iter_messages(chat, from_user=target_user):
+            if msg.id == status_msg.id:
+                continue
             batch.append(msg.id)
             if len(batch) >= 100:
                 await client.delete_messages(chat, batch)
                 deleted_count += len(batch)
                 batch = []
-                await asyncio.sleep(0.5)
+                await asyncio.sleep(0.3)
 
         if batch:
             await client.delete_messages(chat, batch)
             deleted_count += len(batch)
 
-        await status_msg.edit(
-            "```text\n"
-            "┌───「 🧹 𝗗𝗘𝗟𝗔𝗟𝗟 𝗖𝗢𝗠𝗣𝗟𝗘𝗧𝗘 」\n"
-            f"├─ 👤 𝗧𝗔𝗥𝗚𝗘𝗧 :: {target_user}\n"
-            f"└─ 🗑️ 𝗣𝗨𝗥𝗚𝗘𝗗 :: {deleted_count} messages\n"
-            "```"
-        )
-        await asyncio.sleep(3)
-        await status_msg.delete()
+        try:
+            await status_msg.edit(
+                "```text\n"
+                "┌───「 🧹 𝗗𝗘𝗟𝗔𝗟𝗟 𝗖𝗢𝗠𝗣𝗟𝗘𝗧𝗘 」\n"
+                f"├─ 👤 𝗧𝗔𝗥𝗚𝗘𝗧 :: {target_user}\n"
+                f"└─ 🗑️ 𝗣𝗨𝗥𝗚𝗘𝗗 :: {deleted_count} messages\n"
+                "```"
+            )
+            await asyncio.sleep(3)
+            await status_msg.delete()
+        except Exception:
+            pass
 
-    # --- .purgeme (Purge own messages in the chat) ---
+    # --- .purgeme (All-time or custom count purge of own messages) ---
     @client.on(events.NewMessage(outgoing=True, pattern=r'^\.purgeme(?:\s+(\d+))?'))
     async def purge_my_messages(event):
-        limit = int(event.pattern_match.group(1) or 100)
+        arg = event.pattern_match.group(1)
+        limit = int(arg) if arg else None
         chat = await event.get_input_chat()
         await event.delete()
 
-        status_msg = await event.respond(f"```text\n[🧹] Purging your last {limit} messages...\n```")
+        label = f"last {limit}" if limit else "ALL-TIME"
+        status_msg = await event.respond(f"```text\n[🧹] Purging {label} messages...\n```")
         batch = []
         count = 0
 
         async for msg in client.iter_messages(chat, from_user="me", limit=limit):
+            if msg.id == status_msg.id:
+                continue
             batch.append(msg.id)
             if len(batch) >= 100:
                 await client.delete_messages(chat, batch)
                 count += len(batch)
                 batch = []
-                await asyncio.sleep(0.5)
+                await asyncio.sleep(0.3)
 
         if batch:
             await client.delete_messages(chat, batch)
             count += len(batch)
 
-        await status_msg.edit(
-            "```text\n"
-            "┌───「 🧹 𝗣𝗨𝗥𝗚𝗘𝗠𝗘 𝗖𝗢𝗠𝗣𝗟𝗘𝗧𝗘 」\n"
-            f"└─ 🗑️ Cleaned :: {count} own messages\n"
-            "```"
-        )
-        await asyncio.sleep(3)
-        await status_msg.delete()
+        try:
+            await status_msg.edit(
+                "```text\n"
+                "┌───「 🧹 𝗔𝗟𝗟-𝗧𝗜𝗠𝗘 𝗣𝗨𝗥𝗚𝗘𝗠𝗘 」\n"
+                f"└─ 🗑️ Cleaned :: {count} total messages\n"
+                "```"
+            )
+            await asyncio.sleep(3)
+            await status_msg.delete()
+        except Exception:
+            pass
