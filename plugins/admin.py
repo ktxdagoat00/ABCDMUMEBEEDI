@@ -30,8 +30,6 @@ UNBANNED_RIGHTS = ChatBannedRights(
     embed_links=False
 )
 
-# --- Group-safe Admin Rights Tiers ---
-# Tier 1: Ghost admin (no practical rights, only badge)
 ADMIN_TIER_1 = ChatAdminRights(
     change_info=False,
     delete_messages=False,
@@ -44,7 +42,6 @@ ADMIN_TIER_1 = ChatAdminRights(
     other=True
 )
 
-# Tier 2: Standard admin (moderate privileges, no add admin, no anon)
 ADMIN_TIER_2 = ChatAdminRights(
     change_info=True,
     delete_messages=True,
@@ -57,7 +54,6 @@ ADMIN_TIER_2 = ChatAdminRights(
     other=True
 )
 
-# Tier 3: Super admin (full rights except anonymous)
 ADMIN_TIER_3 = ChatAdminRights(
     change_info=True,
     delete_messages=True,
@@ -70,7 +66,6 @@ ADMIN_TIER_3 = ChatAdminRights(
     other=True
 )
 
-# Demote rights: completely stripped
 DEMOTE_RIGHTS = ChatAdminRights(
     change_info=False,
     delete_messages=False,
@@ -192,7 +187,7 @@ def setup(client):
         except Exception as e:
             await event.edit(f"```text\n[!] Unban Failed: {e}\n```")
 
-    # --- PROMOTE COMMANDS (1, 2, 3) ---
+    # --- PROMOTE COMMANDS (With Custom Tag / Title) ---
     @client.on(events.NewMessage(outgoing=True, pattern=r'^\.promote(?:\s+(.*))?'))
     async def promote_handler(event):
         chat = await event.get_input_chat()
@@ -201,31 +196,42 @@ def setup(client):
 
         tier = "2"
         target_raw = None
+        custom_tag = "Admin"
 
         if reply:
             target_raw = reply.sender_id
             if len(args) >= 1 and args[0] in ["1", "2", "3"]:
                 tier = args[0]
+                if len(args) >= 2:
+                    custom_tag = " ".join(args[1:])
+            elif len(args) >= 1:
+                custom_tag = " ".join(args)
         else:
             if len(args) >= 2 and args[0] in ["1", "2", "3"]:
                 tier = args[0]
                 target_raw = args[1]
+                if len(args) >= 3:
+                    custom_tag = " ".join(args[2:])
             elif len(args) >= 1:
                 target_raw = args[0]
+                if len(args) >= 2:
+                    custom_tag = " ".join(args[1:])
 
         if not target_raw:
             await event.edit(
                 "```text\n"
                 "┌───「 ⚠️ 𝗣𝗥𝗢𝗠𝗢𝗧𝗘 𝗨𝗦𝗔𝗚𝗘 」\n"
-                "├─ .promote 1 <user/reply> :: Zero Rights\n"
-                "├─ .promote 2 <user/reply> :: Standard (No Add Admin/Anon)\n"
-                "└─ .promote 3 <user/reply> :: Full Rights (No Anon)\n"
+                "├─ Reply:  .promote <1-3> <tag>\n"
+                "└─ Direct: .promote <1-3> <user> <tag>\n"
                 "```"
             )
             return
 
         if str(target_raw).isdigit() or (str(target_raw).startswith("-") and str(target_raw)[1:].isdigit()):
             target_raw = int(target_raw)
+
+        # Telegram custom title limit is 16 characters
+        custom_tag = custom_tag[:16]
 
         rights_map = {
             "1": (ADMIN_TIER_1, "Tier 1 [Zero Rights / Badge]"),
@@ -244,7 +250,7 @@ def setup(client):
                 channel=chat,
                 user_id=target_entity,
                 admin_rights=chosen_rights,
-                rank="Admin"
+                rank=custom_tag
             ))
 
             card = (
@@ -252,8 +258,9 @@ def setup(client):
                 "┌───「 ⚡ 𝗔𝗗𝗠𝗜𝗡 𝗣𝗥𝗢𝗠𝗢𝗧𝗜𝗢𝗡 ⚡ 」\n"
                 "│\n"
                 f"├─ 👤 𝗧𝗔𝗥𝗚𝗘𝗧 :: {target_raw}\n"
+                f"├─ 🏷️ 𝗧𝗔𝗚    :: {custom_tag}\n"
                 f"├─ 🎖️ 𝗟𝗘𝗩𝗘𝗟  :: {tier_name}\n"
-                "├─ 🛡️ 𝗦𝗧𝗔𝗧𝗨𝗦 :: Privileges Granted\n"
+                "├─ 🛡️ 𝗦𝗧𝗔𝗧𝗨𝗦 :: Privileges & Tag Applied\n"
                 "│\n"
                 "└───「 👑 𝗞𝗘𝗦𝗛𝗔𝗩-𝗦𝗬𝗦𝗧𝗘𝗠 」\n"
                 "```"
@@ -278,12 +285,17 @@ def setup(client):
                 await event.edit("```text\n[!] User entity not found!\n```")
                 return
 
-            await client(EditAdminRequest(
-                channel=chat,
-                user_id=target_entity,
-                admin_rights=DEMOTE_RIGHTS,
-                rank=""
-            ))
+            try:
+                await client(EditAdminRequest(
+                    channel=chat,
+                    user_id=target_entity,
+                    admin_rights=DEMOTE_RIGHTS,
+                    rank=""
+                ))
+            except Exception:
+                await client(EditBannedRequest(chat, target_entity, BANNED_RIGHTS))
+                await asyncio.sleep(0.3)
+                await client(EditBannedRequest(chat, target_entity, UNBANNED_RIGHTS))
 
             card = (
                 "```text\n"
