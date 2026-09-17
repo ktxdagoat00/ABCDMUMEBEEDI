@@ -30,6 +30,33 @@ UNBANNED_RIGHTS = ChatBannedRights(
     embed_links=False
 )
 
+async def resolve_entity(client, chat, target):
+    # 1. Try direct entity
+    try:
+        return await client.get_input_entity(target)
+    except Exception:
+        pass
+
+    # 2. Agar numeric ID hai aur cache me nahi hai, toh current group ke members me dhundo
+    if isinstance(target, int) or (isinstance(target, str) and (target.isdigit() or target.startswith("-"))):
+        uid = int(target)
+        try:
+            async for member in client.iter_participants(chat):
+                if member.id == uid:
+                    return await client.get_input_entity(member)
+        except Exception:
+            pass
+
+    # 3. String username search in group
+    try:
+        async for member in client.iter_participants(chat, search=str(target)):
+            if str(member.id) == str(target) or member.username == str(target).replace("@", ""):
+                return await client.get_input_entity(member)
+    except Exception:
+        pass
+
+    return None
+
 async def extract_target_user(event, client):
     reply = await event.get_reply_message()
     if reply:
@@ -43,11 +70,7 @@ async def extract_target_user(event, client):
         reason = parts[2] if len(parts) > 2 else ""
         if target.isdigit() or (target.startswith("-") and target[1:].isdigit()):
             return int(target), reason
-        try:
-            entity = await client.get_entity(target)
-            return entity.id, reason
-        except Exception:
-            return None, ""
+        return target, reason
     return None, ""
 
 def setup(client):
@@ -56,23 +79,27 @@ def setup(client):
     @client.on(events.NewMessage(outgoing=True, pattern=r'^\.ban(?:\s+(.*))?'))
     async def ban_user(event):
         chat = await event.get_input_chat()
-        target_id, reason = await extract_target_user(event, client)
+        target_raw, reason = await extract_target_user(event, client)
         
-        if not target_id:
+        if not target_raw:
             await event.edit("```text\n[!] Reply to user or provide ID/Username\n```")
             return
 
         reason_text = reason if reason else "No reason specified"
         
         try:
-            target_entity = await client.get_input_entity(target_id)
+            target_entity = await resolve_entity(client, chat, target_raw)
+            if not target_entity:
+                await event.edit("```text\n[!] User not found in this group/cache!\n```")
+                return
+
             await client(EditBannedRequest(chat, target_entity, BANNED_RIGHTS))
             
             card = (
                 "```text\n"
                 "┌───「 🚫 𝗨𝗦𝗘𝗥 𝗘𝗫𝗘𝗖𝗨𝗧𝗜𝗢𝗡 ⚡ 」\n"
                 "│\n"
-                f"├─ 👤 𝗧𝗔𝗥𝗚𝗘𝗧 :: {target_id}\n"
+                f"├─ 👤 𝗧𝗔𝗥𝗚𝗘𝗧 :: {target_raw}\n"
                 f"├─ 📝 𝗥𝗘𝗔𝗦𝗢𝗡 :: {reason_text}\n"
                 "├─ 🛡️ 𝗔𝗖𝗧𝗜𝗢𝗡 :: Banned from Network\n"
                 "│\n"
@@ -87,21 +114,25 @@ def setup(client):
     @client.on(events.NewMessage(outgoing=True, pattern=r'^\.unban(?:\s+(.*))?'))
     async def unban_user(event):
         chat = await event.get_input_chat()
-        target_id, _ = await extract_target_user(event, client)
+        target_raw, _ = await extract_target_user(event, client)
 
-        if not target_id:
+        if not target_raw:
             await event.edit("```text\n[!] Reply to user or provide ID/Username\n```")
             return
 
         try:
-            target_entity = await client.get_input_entity(target_id)
+            target_entity = await resolve_entity(client, chat, target_raw)
+            if not target_entity:
+                await event.edit("```text\n[!] User entity not resolved!\n```")
+                return
+
             await client(EditBannedRequest(chat, target_entity, UNBANNED_RIGHTS))
 
             card = (
                 "```text\n"
                 "┌───「 🔓 𝗨𝗦𝗘𝗥 𝗣𝗔𝗥𝗗𝗢𝗡𝗘𝗗 ⚡ 」\n"
                 "│\n"
-                f"├─ 👤 𝗧𝗔𝗥𝗚𝗘𝗧 :: {target_id}\n"
+                f"├─ 👤 𝗧𝗔𝗥𝗚𝗘𝗧 :: {target_raw}\n"
                 "├─ 🛡️ 𝗔𝗖𝗧𝗜𝗢𝗡 :: Unbanned / Restrictions Lifted\n"
                 "│\n"
                 "└───「 🕊️ 𝗞𝗘𝗦𝗛𝗔𝗩-𝗦𝗘𝗖𝗨𝗥𝗜𝗧𝗬 」\n"
@@ -114,10 +145,19 @@ def setup(client):
     # --- USER LOCK / UNLOCK ---
     @client.on(events.NewMessage(outgoing=True, pattern=r'^\.lock(?:\s+(.*))?'))
     async def lock_user(event):
-        target_id, _ = await extract_target_user(event, client)
-        if not target_id:
+        target_raw, _ = await extract_target_user(event, client)
+        if not target_raw:
             await event.edit("```text\n[!] Reply to user or provide username/ID\n```")
             return
+
+        # Target ID nikalna
+        target_id = target_raw
+        if isinstance(target_raw, str) and not target_raw.isdigit():
+            try:
+                entity = await client.get_entity(target_raw)
+                target_id = entity.id
+            except Exception:
+                pass
 
         chat_id = event.chat_id
         if chat_id not in locked_users:
@@ -128,7 +168,7 @@ def setup(client):
             "```text\n"
             "┌───「 🔒 𝗨𝗦𝗘𝗥 𝗟𝗢𝗖𝗞𝗘𝗗 ⚡ 」\n"
             "│\n"
-            f"├─ 👤 𝗧𝗔𝗥𝗚𝗘𝗧 :: {target_id}\n"
+            f"├─ 👤 𝗧𝗔𝗥𝗚𝗘𝗧 :: {target_raw}\n"
             "├─ 🛡️ 𝗦𝗧𝗔𝗧𝗨𝗦 :: Auto-Delete Trigger Active\n"
             "│\n"
             "└───「 ⚡ 𝗦𝗜𝗟𝗘𝗡𝗖𝗘 𝗖𝗢𝗥𝗘 」\n"
@@ -138,12 +178,20 @@ def setup(client):
 
     @client.on(events.NewMessage(outgoing=True, pattern=r'^\.unlock(?:\s+(.*))?'))
     async def unlock_user(event):
-        target_id, _ = await extract_target_user(event, client)
+        target_raw, _ = await extract_target_user(event, client)
         chat_id = event.chat_id
 
-        if not target_id:
+        if not target_raw:
             await event.edit("```text\n[!] Reply to user or provide username/ID\n```")
             return
+
+        target_id = target_raw
+        if isinstance(target_raw, str) and not target_raw.isdigit():
+            try:
+                entity = await client.get_entity(target_raw)
+                target_id = entity.id
+            except Exception:
+                pass
 
         if chat_id in locked_users and target_id in locked_users[chat_id]:
             locked_users[chat_id].remove(target_id)
@@ -151,7 +199,7 @@ def setup(client):
                 "```text\n"
                 "┌───「 🔓 𝗨𝗦𝗘𝗥 𝗨𝗡𝗟𝗢𝗖𝗞𝗘𝗗 ⚡ 」\n"
                 "│\n"
-                f"├─ 👤 𝗧𝗔𝗥𝗚𝗘𝗧 :: {target_id}\n"
+                f"├─ 👤 𝗧𝗔𝗥𝗚𝗘𝗧 :: {target_raw}\n"
                 "├─ ⚡ 𝗦𝗧𝗔𝗧𝗨𝗦 :: Restriction Lifted\n"
                 "│\n"
                 "└───「 🕊️ 𝗙𝗥𝗘𝗘𝗗 」\n"
