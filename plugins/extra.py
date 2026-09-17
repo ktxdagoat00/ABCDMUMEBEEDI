@@ -5,29 +5,45 @@ import asyncio
 from telethon import events
 
 async def fetch_sangmata_history(client, user_id):
-    bots = ["@SangMata_beta_bot", "@SangMataInfo_bot"]
-    history_text = ""
-
+    bots = ["@SangMata_BOT", "@SangMata_beta_bot", "@SangmataInfo_bot"]
+    
     for bot in bots:
         try:
-            async with client.conversation(bot, timeout=12) as conv:
-                await conv.send_message(f"/search_id {user_id}")
-                # Wait for reply message from bot
-                response = await conv.get_response()
-                if response and response.raw_text:
-                    history_text = response.raw_text.strip()
-                    # SangMata generic initial header filter
-                    lines = [line for line in history_text.splitlines() if not line.startswith("Search result for")]
-                    history_text = "\n".join(lines).strip()
+            async with client.conversation(bot, timeout=10) as conv:
+                # Sangmata accepts direct ID or /search_id
+                sent_msg = await conv.send_message(f"/search_id {user_id}")
                 
-                # Cleanup conversation trace in dialogs
-                await client.delete_dialog(bot)
-                if history_text:
-                    return history_text
+                collected_lines = []
+                # Sangmata sends acknowledgment first, then history in 1-2 responses
+                for _ in range(3):
+                    try:
+                        resp = await conv.get_response(timeout=4)
+                        if resp and resp.text:
+                            text = resp.text.strip()
+                            # Ignore basic query placeholders
+                            if "searching" in text.lower() or "please wait" in text.lower():
+                                continue
+                            collected_lines.append(text)
+                    except asyncio.TimeoutError:
+                        break
+                
+                # Traces saaf karo
+                try:
+                    await client.delete_dialog(bot)
+                except Exception:
+                    pass
+
+                if collected_lines:
+                    full_res = "\n".join(collected_lines).strip()
+                    # Filter generic headers
+                    lines = [l for l in full_res.splitlines() if not l.startswith("Search result for")]
+                    cleaned = "\n".join(lines).strip()
+                    if cleaned:
+                        return cleaned
         except Exception:
             continue
 
-    return "No recorded name history found or bot busy."
+    return "No past username/name records found in DB."
 
 def setup(client):
 
