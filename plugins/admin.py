@@ -1,13 +1,9 @@
 import asyncio
 from telethon import events
-from telethon.tl.types import ChannelParticipantsAdmins
 from telethon.tl.functions.channels import EditBannedRequest
 from telethon.tl.types import ChatBannedRights
 
-# In-memory stores
-# locked_users = { chat_id: set(user_ids) }
 locked_users = {}
-# locked_chats = set(chat_ids)
 locked_chats = set()
 
 BANNED_RIGHTS = ChatBannedRights(
@@ -22,10 +18,24 @@ BANNED_RIGHTS = ChatBannedRights(
     embed_links=True
 )
 
+UNBANNED_RIGHTS = ChatBannedRights(
+    until_date=None,
+    view_messages=False,
+    send_messages=False,
+    send_media=False,
+    send_stickers=False,
+    send_gifs=False,
+    send_games=False,
+    send_inline=False,
+    embed_links=False
+)
+
 async def extract_target_user(event, client):
     reply = await event.get_reply_message()
     if reply:
-        return reply.sender_id, event.raw_text.split(maxsplit=1)[1] if len(event.raw_text.split()) > 1 else ""
+        parts = event.raw_text.split(maxsplit=1)
+        reason = parts[1] if len(parts) > 1 else ""
+        return reply.sender_id, reason
     
     parts = event.raw_text.split(maxsplit=2)
     if len(parts) > 1:
@@ -72,6 +82,34 @@ def setup(client):
             await event.edit(card)
         except Exception as e:
             await event.edit(f"```text\n[!] Ban Failed: {e}\n```")
+
+    # --- UNBAN COMMAND ---
+    @client.on(events.NewMessage(outgoing=True, pattern=r'^\.unban(?:\s+(.*))?'))
+    async def unban_user(event):
+        chat = await event.get_input_chat()
+        target_id, _ = await extract_target_user(event, client)
+
+        if not target_id:
+            await event.edit("```text\n[!] Reply to user or provide ID/Username\n```")
+            return
+
+        try:
+            target_entity = await client.get_input_entity(target_id)
+            await client(EditBannedRequest(chat, target_entity, UNBANNED_RIGHTS))
+
+            card = (
+                "```text\n"
+                "┌───「 🔓 𝗨𝗦𝗘𝗥 𝗣𝗔𝗥𝗗𝗢𝗡𝗘𝗗 ⚡ 」\n"
+                "│\n"
+                f"├─ 👤 𝗧𝗔𝗥𝗚𝗘𝗧 :: {target_id}\n"
+                "├─ 🛡️ 𝗔𝗖𝗧𝗜𝗢𝗡 :: Unbanned / Restrictions Lifted\n"
+                "│\n"
+                "└───「 🕊️ 𝗞𝗘𝗦𝗛𝗔𝗩-𝗦𝗘𝗖𝗨𝗥𝗜𝗧𝗬 」\n"
+                "```"
+            )
+            await event.edit(card)
+        except Exception as e:
+            await event.edit(f"```text\n[!] Unban Failed: {e}\n```")
 
     # --- USER LOCK / UNLOCK ---
     @client.on(events.NewMessage(outgoing=True, pattern=r'^\.lock(?:\s+(.*))?'))
@@ -164,7 +202,6 @@ def setup(client):
         chat_id = event.chat_id
         sender_id = event.sender_id
 
-        # Check 1: Chat complete lock hai kya?
         if chat_id in locked_chats:
             try:
                 await event.delete()
@@ -172,7 +209,6 @@ def setup(client):
             except Exception:
                 pass
 
-        # Check 2: Sender specific locked list me hai kya?
         if chat_id in locked_users and sender_id in locked_users[chat_id]:
             try:
                 await event.delete()
