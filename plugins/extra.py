@@ -3,26 +3,35 @@ import io
 import traceback
 import asyncio
 from telethon import events
-from telethon.errors import YouBlockedUserError
 
 async def fetch_sangmata_history(client, user_id):
-    # Queries @SangMata_beta_bot for previous name/username logs
-    history_text = "No recorded name history found."
-    try:
-        async with client.conversation("@SangMata_beta_bot", timeout=6) as conv:
-            await conv.send_message(f"/search_id {user_id}")
-            response = await conv.get_response()
-            if response and response.text:
-                history_text = response.text
-            # Delete query traces
-            await client.delete_dialog("@SangMata_beta_bot")
-    except Exception:
-        history_text = "SangMata bot unavailable or blocked."
-    return history_text
+    bots = ["@SangMata_beta_bot", "@SangMataInfo_bot"]
+    history_text = ""
+
+    for bot in bots:
+        try:
+            async with client.conversation(bot, timeout=12) as conv:
+                await conv.send_message(f"/search_id {user_id}")
+                # Wait for reply message from bot
+                response = await conv.get_response()
+                if response and response.raw_text:
+                    history_text = response.raw_text.strip()
+                    # SangMata generic initial header filter
+                    lines = [line for line in history_text.splitlines() if not line.startswith("Search result for")]
+                    history_text = "\n".join(lines).strip()
+                
+                # Cleanup conversation trace in dialogs
+                await client.delete_dialog(bot)
+                if history_text:
+                    return history_text
+        except Exception:
+            continue
+
+    return "No recorded name history found or bot busy."
 
 def setup(client):
 
-    # --- .info COMMAND WITH SANGMATA HISTORY ---
+    # --- .info COMMAND WITH ENHANCED SANGMATA HISTORY ---
     @client.on(events.NewMessage(outgoing=True, pattern=r'^\.info(?:\s+(.*))?'))
     async def user_info(event):
         arg = event.pattern_match.group(1)
@@ -72,7 +81,7 @@ def setup(client):
         except Exception as e:
             await msg.edit(f"```text\n[!] Info Query Failed: {e}\n```")
 
-    # --- .type COMMAND (Typewriter effect) ---
+    # --- .type COMMAND ---
     @client.on(events.NewMessage(outgoing=True, pattern=r'^\.type(?:\s+(.*))?'))
     async def typewriter(event):
         text = event.pattern_match.group(1)
@@ -105,7 +114,6 @@ def setup(client):
         result = None
 
         try:
-            # Wrap async evaluation
             try:
                 result = eval(code)
             except SyntaxError:
