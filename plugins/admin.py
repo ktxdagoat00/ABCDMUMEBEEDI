@@ -30,12 +30,10 @@ UNBANNED_RIGHTS = ChatBannedRights(
     embed_links=False
 )
 
-# Admin Rights Tiers
-# Tier 1: Zero rights (Ghost admin)
+# --- Group-safe Admin Rights Tiers ---
+# Tier 1: Ghost admin (no practical rights, only badge)
 ADMIN_TIER_1 = ChatAdminRights(
     change_info=False,
-    post_messages=False,
-    edit_messages=False,
     delete_messages=False,
     ban_users=False,
     invite_users=False,
@@ -43,14 +41,12 @@ ADMIN_TIER_1 = ChatAdminRights(
     add_admins=False,
     anonymous=False,
     manage_call=False,
-    manage_topics=False
+    other=True
 )
 
-# Tier 2: Standard admin (no add_admins, no anonymous)
+# Tier 2: Standard admin (moderate privileges, no add admin, no anon)
 ADMIN_TIER_2 = ChatAdminRights(
     change_info=True,
-    post_messages=True,
-    edit_messages=True,
     delete_messages=True,
     ban_users=True,
     invite_users=True,
@@ -58,14 +54,12 @@ ADMIN_TIER_2 = ChatAdminRights(
     add_admins=False,
     anonymous=False,
     manage_call=True,
-    manage_topics=True
+    other=True
 )
 
 # Tier 3: Super admin (full rights except anonymous)
 ADMIN_TIER_3 = ChatAdminRights(
     change_info=True,
-    post_messages=True,
-    edit_messages=True,
     delete_messages=True,
     ban_users=True,
     invite_users=True,
@@ -73,14 +67,12 @@ ADMIN_TIER_3 = ChatAdminRights(
     add_admins=True,
     anonymous=False,
     manage_call=True,
-    manage_topics=True
+    other=True
 )
 
-# Demote: All False
+# Demote rights: completely stripped
 DEMOTE_RIGHTS = ChatAdminRights(
     change_info=False,
-    post_messages=False,
-    edit_messages=False,
     delete_messages=False,
     ban_users=False,
     invite_users=False,
@@ -88,7 +80,7 @@ DEMOTE_RIGHTS = ChatAdminRights(
     add_admins=False,
     anonymous=False,
     manage_call=False,
-    manage_topics=False
+    other=False
 )
 
 async def resolve_entity(client, chat, target):
@@ -207,7 +199,7 @@ def setup(client):
         args = (event.pattern_match.group(1) or "").strip().split()
         reply = await event.get_reply_message()
 
-        tier = "2" # default tier
+        tier = "2"
         target_raw = None
 
         if reply:
@@ -232,7 +224,7 @@ def setup(client):
             )
             return
 
-        if target_raw.isdigit() or (str(target_raw).startswith("-") and str(target_raw)[1:].isdigit()):
+        if str(target_raw).isdigit() or (str(target_raw).startswith("-") and str(target_raw)[1:].isdigit()):
             target_raw = int(target_raw)
 
         rights_map = {
