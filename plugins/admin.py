@@ -1,7 +1,7 @@
 import asyncio
 from telethon import events
-from telethon.tl.functions.channels import EditBannedRequest
-from telethon.tl.types import ChatBannedRights
+from telethon.tl.functions.channels import EditBannedRequest, EditAdminRequest
+from telethon.tl.types import ChatBannedRights, ChatAdminRights
 
 locked_users = {}
 locked_chats = set()
@@ -30,14 +30,73 @@ UNBANNED_RIGHTS = ChatBannedRights(
     embed_links=False
 )
 
+# Admin Rights Tiers
+# Tier 1: Zero rights (Ghost admin)
+ADMIN_TIER_1 = ChatAdminRights(
+    change_info=False,
+    post_messages=False,
+    edit_messages=False,
+    delete_messages=False,
+    ban_users=False,
+    invite_users=False,
+    pin_messages=False,
+    add_admins=False,
+    anonymous=False,
+    manage_call=False,
+    manage_topics=False
+)
+
+# Tier 2: Standard admin (no add_admins, no anonymous)
+ADMIN_TIER_2 = ChatAdminRights(
+    change_info=True,
+    post_messages=True,
+    edit_messages=True,
+    delete_messages=True,
+    ban_users=True,
+    invite_users=True,
+    pin_messages=True,
+    add_admins=False,
+    anonymous=False,
+    manage_call=True,
+    manage_topics=True
+)
+
+# Tier 3: Super admin (full rights except anonymous)
+ADMIN_TIER_3 = ChatAdminRights(
+    change_info=True,
+    post_messages=True,
+    edit_messages=True,
+    delete_messages=True,
+    ban_users=True,
+    invite_users=True,
+    pin_messages=True,
+    add_admins=True,
+    anonymous=False,
+    manage_call=True,
+    manage_topics=True
+)
+
+# Demote: All False
+DEMOTE_RIGHTS = ChatAdminRights(
+    change_info=False,
+    post_messages=False,
+    edit_messages=False,
+    delete_messages=False,
+    ban_users=False,
+    invite_users=False,
+    pin_messages=False,
+    add_admins=False,
+    anonymous=False,
+    manage_call=False,
+    manage_topics=False
+)
+
 async def resolve_entity(client, chat, target):
-    # 1. Try direct entity
     try:
         return await client.get_input_entity(target)
     except Exception:
         pass
 
-    # 2. Agar numeric ID hai aur cache me nahi hai, toh current group ke members me dhundo
     if isinstance(target, int) or (isinstance(target, str) and (target.isdigit() or target.startswith("-"))):
         uid = int(target)
         try:
@@ -47,7 +106,6 @@ async def resolve_entity(client, chat, target):
         except Exception:
             pass
 
-    # 3. String username search in group
     try:
         async for member in client.iter_participants(chat, search=str(target)):
             if str(member.id) == str(target) or member.username == str(target).replace("@", ""):
@@ -142,6 +200,113 @@ def setup(client):
         except Exception as e:
             await event.edit(f"```text\n[!] Unban Failed: {e}\n```")
 
+    # --- PROMOTE COMMANDS (1, 2, 3) ---
+    @client.on(events.NewMessage(outgoing=True, pattern=r'^\.promote(?:\s+(.*))?'))
+    async def promote_handler(event):
+        chat = await event.get_input_chat()
+        args = (event.pattern_match.group(1) or "").strip().split()
+        reply = await event.get_reply_message()
+
+        tier = "2" # default tier
+        target_raw = None
+
+        if reply:
+            target_raw = reply.sender_id
+            if len(args) >= 1 and args[0] in ["1", "2", "3"]:
+                tier = args[0]
+        else:
+            if len(args) >= 2 and args[0] in ["1", "2", "3"]:
+                tier = args[0]
+                target_raw = args[1]
+            elif len(args) >= 1:
+                target_raw = args[0]
+
+        if not target_raw:
+            await event.edit(
+                "```text\n"
+                "┌───「 ⚠️ 𝗣𝗥𝗢𝗠𝗢𝗧𝗘 𝗨𝗦𝗔𝗚𝗘 」\n"
+                "├─ .promote 1 <user/reply> :: Zero Rights\n"
+                "├─ .promote 2 <user/reply> :: Standard (No Add Admin/Anon)\n"
+                "└─ .promote 3 <user/reply> :: Full Rights (No Anon)\n"
+                "```"
+            )
+            return
+
+        if target_raw.isdigit() or (str(target_raw).startswith("-") and str(target_raw)[1:].isdigit()):
+            target_raw = int(target_raw)
+
+        rights_map = {
+            "1": (ADMIN_TIER_1, "Tier 1 [Zero Rights / Badge]"),
+            "2": (ADMIN_TIER_2, "Tier 2 [Standard Admin]"),
+            "3": (ADMIN_TIER_3, "Tier 3 [Super Admin]")
+        }
+        chosen_rights, tier_name = rights_map.get(tier, (ADMIN_TIER_2, "Tier 2 [Standard Admin]"))
+
+        try:
+            target_entity = await resolve_entity(client, chat, target_raw)
+            if not target_entity:
+                await event.edit("```text\n[!] User entity not found!\n```")
+                return
+
+            await client(EditAdminRequest(
+                channel=chat,
+                user_id=target_entity,
+                admin_rights=chosen_rights,
+                rank="Admin"
+            ))
+
+            card = (
+                "```text\n"
+                "┌───「 ⚡ 𝗔𝗗𝗠𝗜𝗡 𝗣𝗥𝗢𝗠𝗢𝗧𝗜𝗢𝗡 ⚡ 」\n"
+                "│\n"
+                f"├─ 👤 𝗧𝗔𝗥𝗚𝗘𝗧 :: {target_raw}\n"
+                f"├─ 🎖️ 𝗟𝗘𝗩𝗘𝗟  :: {tier_name}\n"
+                "├─ 🛡️ 𝗦𝗧𝗔𝗧𝗨𝗦 :: Privileges Granted\n"
+                "│\n"
+                "└───「 👑 𝗞𝗘𝗦𝗛𝗔𝗩-𝗦𝗬𝗦𝗧𝗘𝗠 」\n"
+                "```"
+            )
+            await event.edit(card)
+        except Exception as e:
+            await event.edit(f"```text\n[!] Promote Failed: {e}\n```")
+
+    # --- DEMOTE COMMAND ---
+    @client.on(events.NewMessage(outgoing=True, pattern=r'^\.demote(?:\s+(.*))?'))
+    async def demote_handler(event):
+        chat = await event.get_input_chat()
+        target_raw, _ = await extract_target_user(event, client)
+
+        if not target_raw:
+            await event.edit("```text\n[!] Reply to user or provide username/ID\n```")
+            return
+
+        try:
+            target_entity = await resolve_entity(client, chat, target_raw)
+            if not target_entity:
+                await event.edit("```text\n[!] User entity not found!\n```")
+                return
+
+            await client(EditAdminRequest(
+                channel=chat,
+                user_id=target_entity,
+                admin_rights=DEMOTE_RIGHTS,
+                rank=""
+            ))
+
+            card = (
+                "```text\n"
+                "┌───「 🔻 𝗔𝗗𝗠𝗜𝗡 𝗗𝗘𝗠𝗢𝗧𝗜𝗢𝗡 ⚡ 」\n"
+                "│\n"
+                f"├─ 👤 𝗧𝗔𝗥𝗚𝗘𝗧 :: {target_raw}\n"
+                "├─ 🛡️ 𝗦𝗧𝗔𝗧𝗨𝗦 :: All Admin Rights Stripped\n"
+                "│\n"
+                "└───「 📉 𝗞𝗘𝗦𝗛𝗔𝗩-𝗦𝗬𝗦𝗧𝗘𝗠 」\n"
+                "```"
+            )
+            await event.edit(card)
+        except Exception as e:
+            await event.edit(f"```text\n[!] Demote Failed: {e}\n```")
+
     # --- USER LOCK / UNLOCK ---
     @client.on(events.NewMessage(outgoing=True, pattern=r'^\.lock(?:\s+(.*))?'))
     async def lock_user(event):
@@ -150,7 +315,6 @@ def setup(client):
             await event.edit("```text\n[!] Reply to user or provide username/ID\n```")
             return
 
-        # Target ID nikalna
         target_id = target_raw
         if isinstance(target_raw, str) and not target_raw.isdigit():
             try:

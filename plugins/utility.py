@@ -49,6 +49,8 @@ def setup(client):
             "╠─ • .ping          :: Check server ping\n"
             "╠─ • .afk <reason>  :: Go Away From Keyboard\n"
             "╠─ • .tr <text>     :: Translate into Hindi\n"
+            "╠─ • .promote <1-3> :: Promote member (3 tiers)\n"
+            "╠─ • .demote <user> :: Demote admin to member\n"
             "╠─ • .ban <id/rep>  :: Ban member with reason\n"
             "╠─ • .unban <id>    :: Unban member\n"
             "╠─ • .lock <id/rep> :: Auto-delete user's msgs\n"
