@@ -27,7 +27,67 @@ def parse_time_to_seconds(time_str):
 
 def setup(client):
 
-    # --- .song <name> (Bypass YouTube Bot Verification) ---
+    # --- .ytdl <link> (Native yt-dlp Video Extractor) ---
+    @client.on(events.NewMessage(outgoing=True, pattern=r'^\.ytdl(?:\s+(.+))?'))
+    async def download_video(event):
+        url = event.pattern_match.group(1)
+        if not url:
+            await event.edit("```text\n[!] Usage: .ytdl <video/shorts/reels link>\n```")
+            return
+
+        status = await event.edit("```text\n┌───「 ⚡ 𝗙𝗘𝗧𝗖𝗛𝗜𝗡𝗚 𝗠𝗘𝗗𝗜𝗔... 」\n└───「 🛰️ Extracting video stream 」\n```")
+        out_template = f"video_{event.id}.%(ext)s"
+
+        ydl_opts = {
+            'format': 'best[ext=mp4]/best',
+            'outtmpl': out_template,
+            'quiet': True,
+            'no_warnings': True,
+            'max_filesize': 48 * 1024 * 1024,
+            'extractor_args': {
+                'youtube': {
+                    'player_client': ['android', 'ios']
+                }
+            }
+        }
+
+        loop = asyncio.get_event_loop()
+        try:
+            def extract():
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    info = ydl.extract_info(url, download=True)
+                    file_path = ydl.prepare_filename(info)
+                    return info, file_path
+
+            info, file_path = await loop.run_in_executor(None, extract)
+
+            if not os.path.exists(file_path):
+                # Fallback check if extension changed during merge
+                base = f"video_{event.id}"
+                for f in os.listdir("."):
+                    if f.startswith(base):
+                        file_path = f
+                        break
+
+            await status.edit("```text\n┌───「 📤 𝗨𝗣𝗟𝗢𝗔𝗗𝗜𝗡𝗚... 」\n└───「 ⚡ Sending video to chat 」\n```")
+            chat = await event.get_input_chat()
+            title = info.get('title', 'Downloaded Video') if isinstance(info, dict) else 'Downloaded Video'
+
+            await client.send_file(
+                chat,
+                file_path,
+                caption=f"🎬 **{title[:40]}**",
+                supports_streaming=True
+            )
+
+            if os.path.exists(file_path):
+                os.remove(file_path)
+            await status.delete()
+
+        except Exception as e:
+            await status.edit(f"```text\n[!] YTDL Failed: {e}\n```")
+
+    # --- .song <name> (Bypass YouTube Bot Check + SoundCloud Fallback) ---
     @client.on(events.NewMessage(outgoing=True, pattern=r'^\.song(?:\s+(.+))?'))
     async def download_song(event):
         query = event.pattern_match.group(1)
@@ -38,7 +98,6 @@ def setup(client):
         status = await event.edit(f"```text\n┌───「 🎵 𝗦𝗘𝗔𝗥𝗖𝗛𝗜𝗡𝗚 𝗔𝗨𝗗𝗜𝗢... 」\n└───「 🛰️ Query: {query[:25]} 」\n```")
         out_template = f"song_{event.id}.%(ext)s"
 
-        # Method 1: Bypass YouTube Bot Detection via Android/iOS Client
         ydl_opts_yt = {
             'format': 'bestaudio/best',
             'outtmpl': out_template,
@@ -54,7 +113,6 @@ def setup(client):
             }
         }
 
-        # Method 2: Fallback to SoundCloud (Zero IP blocks on Cloud servers)
         ydl_opts_sc = {
             'format': 'bestaudio/best',
             'outtmpl': out_template,
@@ -76,7 +134,6 @@ def setup(client):
                     file_path = ydl.prepare_filename(info)
                     return info, file_path
             except Exception:
-                # Fallback to SoundCloud if YouTube denies cloud IP
                 with yt_dlp.YoutubeDL(ydl_opts_sc) as ydl:
                     info = ydl.extract_info(query, download=True)
                     if 'entries' in info and info['entries']:
@@ -287,7 +344,7 @@ def setup(client):
             await event.edit("```text\n[!] Provide text or reply to a message: .tts <text>\n```")
             return
 
-        status = await event.edit("```text\n┌───「 🎙️ 𝗚𝗘𝗡𝗘𝗥𝗔𝗧𝗜𝗡𝗚 𝗔𝗨𝗗𝗜𝗢... 」\n└───「 ⚡ 𝗖𝗼𝗻𝘃𝗲𝗿𝘁𝗶𝗻𝗴 𝘁𝗲𝘅𝘁 𝘁𝗼 𝘃𝗼𝗶𝗰𝗲 」\n```")
+        status = await event.edit("```text\n┌───「 🎙️ 𝗚𝗘𝗡𝗘𝗥𝗔𝗧𝗜𝗡𝗚 𝗔𝗨𝗗𝗜𝗢... 」\n└───「 ⚡ 𝗖𝗼𝗻𝘃𝗲𝗿𝘁𝗶𝗻𝗴 𝘁𝗲𝗅𝘁 𝘁𝗼 𝘃𝗼𝗶𝗰𝗲 」\n```")
         out_file = f"tts_{event.id}.mp3"
 
         try:
@@ -311,34 +368,3 @@ def setup(client):
             await status.delete()
         except Exception as e:
             await status.edit(f"```text\n[!] TTS Failed: {e}\n```")
-
-    # --- .ytdl <link> ---
-    @client.on(events.NewMessage(outgoing=True, pattern=r'^\.ytdl(?:\s+(.+))?'))
-    async def download_video(event):
-        url = event.pattern_match.group(1)
-        if not url:
-            await event.edit("```text\n[!] Usage: .ytdl <video/shorts/reels link>\n```")
-            return
-
-        status = await event.edit("```text\n┌───「 ⚡ 𝗙𝗘𝗧𝗖𝗛𝗜𝗡𝗚 𝗠𝗘𝗗𝗜𝗔... 」\n└───「 🛰️ 𝗥𝗲𝗾𝘂𝗲𝘀𝘁𝗶𝗻𝗴 𝗱𝗼𝘄𝗻𝗹𝗼𝗮𝗱 𝘀𝘁𝗿𝗲𝗮𝗺 」\n```")
-        try:
-            import requests
-            api_url = "https://api.cobalt.tools/api/json"
-            headers = {"Accept": "application/json", "Content-Type": "application/json"}
-            payload = {"url": url}
-            
-            loop = asyncio.get_event_loop()
-            res = await loop.run_in_executor(None, lambda: requests.post(api_url, json=payload, headers=headers, timeout=15))
-            data = res.json()
-
-            stream_url = data.get("url")
-            if not stream_url:
-                await status.edit("```text\n[!] Stream URL not extracted. Site may be protected.\n```")
-                return
-
-            await status.edit("```text\n┌───「 📤 𝗨𝗣𝗟𝗢𝗔𝗗𝗜𝗡𝗚... 」\n└───「 ⚡ 𝗦𝗲𝗻𝗱𝗶𝗻𝗴 𝗺𝗲𝗱𝗶𝗮 𝗳𝗶𝗹𝗲 」\n```")
-            chat = await event.get_input_chat()
-            await client.send_file(chat, stream_url, caption="🎬 **Downloaded Media**")
-            await status.delete()
-        except Exception as e:
-            await status.edit(f"```text\n[!] YTDL Error: {e}\n```")
