@@ -6,7 +6,14 @@ from telethon.tl.functions.account import UpdateProfileRequest, UpdateUsernameRe
 from telethon.tl.functions.photos import UploadProfilePhotoRequest
 from telethon.tl.functions.users import GetFullUserRequest
 
-# Safe import for emoji/music status
+# Safe dynamic imports
+try:
+    from telethon.tl.functions.account import UpdateBirthdayRequest
+    from telethon.tl.types import Birthday
+    HAS_BIRTHDAY = True
+except Exception:
+    HAS_BIRTHDAY = False
+
 try:
     from telethon.tl.functions.account import UpdateEmojiStatusRequest
     from telethon.tl.types import EmojiStatus, EmojiStatusEmpty
@@ -17,7 +24,6 @@ except Exception:
 BACKUP_FILE = "state/original_identity.json"
 SAVED_PFP = "state/original_pfp.jpg"
 
-# Case-aware homoglyphs
 HOMOGLYPHS = [
     ('l', 'I'),
     ('I', 'l'),
@@ -34,7 +40,7 @@ HOMOGLYPHS = [
 def generate_stealth_usernames(target):
     variations = []
 
-    # 1. Homoglyphs (preserving case)
+    # 1. Homoglyphs with case preservation
     for i, ch in enumerate(target):
         for orig, sub in HOMOGLYPHS:
             if ch == orig:
@@ -42,7 +48,7 @@ def generate_stealth_usernames(target):
                 if cand != target and len(cand) >= 5:
                     variations.append(cand)
 
-    # 2. Minimum modifications (_1 fallback)
+    # 2. Minimum modifications (_1, _0 fallback)
     if len(target) <= 30:
         variations.append(f"{target}_1")
         variations.append(f"{target}_0")
@@ -65,13 +71,27 @@ async def save_original_identity(client):
         if hasattr(me.emoji_status, 'document_id'):
             status_doc_id = me.emoji_status.document_id
 
+    b_day, b_month, b_year = None, None, None
+    if getattr(full_me.full_user, 'birthday', None):
+        b = full_me.full_user.birthday
+        b_day = getattr(b, 'day', None)
+        b_month = getattr(b, 'month', None)
+        b_year = getattr(b, 'year', None)
+
+    # Completely dynamic: takes whatever username the logged-in user actually has
+    current_uname = me.username if me.username else ""
+
     data = {
         "first_name": me.first_name or "",
         "last_name": me.last_name or "",
         "about": full_me.full_user.about or "",
-        "username": me.username or "",
+        "username": current_uname,
         "status_doc_id": status_doc_id,
-        "had_pfp": pfp_exists
+        "b_day": b_day,
+        "b_month": b_month,
+        "b_year": b_year,
+        "had_pfp": pfp_exists,
+        "had_username": bool(me.username)
     }
 
     os.makedirs("state", exist_ok=True)
@@ -108,6 +128,8 @@ def setup(client):
         msg = await event.edit("```text\n┌───「 🧬 𝗜𝗡𝗜𝗧𝗜𝗔𝗧𝗜𝗡𝗚 𝗖𝗟𝗢𝗡𝗜𝗡𝗚 」\n└───「 🛰️ 𝗙𝗥𝗘𝗘𝗭𝗜𝗡𝗚 𝗢𝗥𝗜𝗚𝗜𝗡𝗔𝗟 𝗜𝗗 」\n```")
 
         try:
+            me = await client.get_me()
+            # Backup only if not already cloned
             if not os.path.exists(BACKUP_FILE):
                 await save_original_identity(client)
 
@@ -119,29 +141,48 @@ def setup(client):
             t_about = target_full.full_user.about or ""
             t_username = target_user.username or ""
 
-            await msg.edit("```text\n┌───「 🧬 𝗦𝗬𝗡𝗖𝗜𝗡𝗚 𝗜𝗗𝗘𝗡𝗧𝗜𝗧𝗬 」\n└───「 👤 𝗡𝗔𝗠𝗘 + 𝗕𝗜𝗢 + 𝗦𝗧𝗔𝗧𝗨𝗦 + 𝗣𝗙𝗣 」\n```")
+            await msg.edit("```text\n┌───「 🧬 𝗦𝗬𝗡𝗖𝗜𝗡𝗚 𝗜𝗗𝗘𝗡𝗧𝗜𝗧𝗬 」\n└───「 👤 𝗡𝗔𝗠𝗘 + 𝗕𝗜𝗢 + 𝗕𝗜𝗥𝗧𝗛𝗗𝗔𝗬 + 𝗦𝗧𝗔𝗧𝗨𝗦 + 𝗣𝗙𝗣 」\n```")
 
-            # Update Name & Bio
+            # 1. Update Name & Bio
             await client(UpdateProfileRequest(
                 first_name=t_first,
                 last_name=t_last,
                 about=t_about
             ))
 
-            # Sync Emoji / Music Status
+            # 2. Sync Birthday
+            bday_status = "None"
+            if HAS_BIRTHDAY and getattr(target_full.full_user, 'birthday', None):
+                tb = target_full.full_user.birthday
+                try:
+                    await client(UpdateBirthdayRequest(
+                        birthday=Birthday(
+                            day=tb.day,
+                            month=tb.month,
+                            year=getattr(tb, 'year', None)
+                        )
+                    ))
+                    bday_status = f"{tb.day}/{tb.month}" + (f"/{tb.year}" if getattr(tb, 'year', None) else "")
+                except Exception:
+                    bday_status = "Privacy Blocked"
+
+            # 3. Sync Music / Emoji Status
             music_status_applied = "None"
             if HAS_EMOJI_STATUS and getattr(target_user, 'emoji_status', None):
                 if hasattr(target_user.emoji_status, 'document_id'):
                     doc_id = target_user.emoji_status.document_id
-                    try:
-                        await client(UpdateEmojiStatusRequest(
-                            emoji_status=EmojiStatus(document_id=doc_id)
-                        ))
-                        music_status_applied = "Copied"
-                    except Exception:
-                        music_status_applied = "Failed/Premium"
+                    if getattr(me, 'premium', False):
+                        try:
+                            await client(UpdateEmojiStatusRequest(
+                                emoji_status=EmojiStatus(document_id=doc_id)
+                            ))
+                            music_status_applied = "Copied 🎵"
+                        except Exception:
+                            music_status_applied = "Failed"
+                    else:
+                        music_status_applied = "Skipped (Premium Required)"
 
-            # Download and set Target PFP
+            # 4. Download and upload high-res PFP
             temp_pfp = "state/temp_clone_pfp.jpg"
             if target_user.photo:
                 await client.download_profile_photo(target_user, file=temp_pfp)
@@ -150,7 +191,7 @@ def setup(client):
                 if os.path.exists(temp_pfp):
                     os.remove(temp_pfp)
 
-            # Cased Username Cloak
+            # 5. Case-preserving Username Cloak
             spoofed_username = "Unchanged"
             if t_username:
                 await msg.edit("```text\n┌───「 🧬 𝗖𝗟𝗢𝗔𝗞𝗜𝗡𝗚 𝗨𝗦𝗘𝗥𝗡𝗔𝗠𝗘 」\n└───「 🛰️ 𝗛𝗢𝗠𝗢𝗚𝗟𝗬𝗣𝗛 + 𝗙𝗔𝗟𝗟𝗕𝗔𝗖𝗞 」\n```")
@@ -169,6 +210,7 @@ def setup(client):
                 "║\n"
                 f"╠─ 👤 𝗡𝗔𝗠𝗘      :: {t_first} {t_last}\n"
                 f"╠─ 📝 𝗔𝗕𝗢𝗨𝗧     :: {t_about[:35]}...\n"
+                f"╠─ 🎂 𝗕𝗜𝗥𝗧𝗛𝗗𝗔𝗬  :: {bday_status}\n"
                 f"╠─ 🎯 𝗧𝗔𝗥𝗚𝗘𝗧    :: @{t_username if t_username else 'None'}\n"
                 f"╠─ 🎭 𝗦𝗣𝗢𝗢𝗙 𝗨𝗦𝗘𝗥 :: {spoofed_username}\n"
                 f"╠─ 🎵 𝗠𝗨𝗦𝗜𝗖/𝗦𝗧𝗔𝗧 :: {music_status_applied}\n"
@@ -202,15 +244,34 @@ def setup(client):
                 about=backup.get("about", "")
             ))
 
-            # 2. Restore Username
+            # 2. Restore Original Dynamic Username
+            had_username = backup.get("had_username", False)
             orig_username = backup.get("username", "")
-            if orig_username:
-                try:
+
+            try:
+                if had_username and orig_username:
                     await client(UpdateUsernameRequest(orig_username))
+                else:
+                    await client(UpdateUsernameRequest(""))
+            except Exception as ue:
+                print(f"Username restore log: {ue}")
+
+            # 3. Restore Birthday
+            if HAS_BIRTHDAY:
+                try:
+                    b_day = backup.get("b_day")
+                    b_month = backup.get("b_month")
+                    b_year = backup.get("b_year")
+                    if b_day and b_month:
+                        await client(UpdateBirthdayRequest(
+                            birthday=Birthday(day=b_day, month=b_month, year=b_year)
+                        ))
+                    else:
+                        await client(UpdateBirthdayRequest(birthday=None))
                 except Exception:
                     pass
 
-            # 3. Restore Emoji / Music Status
+            # 4. Restore Emoji / Music Status
             if HAS_EMOJI_STATUS:
                 status_id = backup.get("status_doc_id")
                 try:
@@ -221,7 +282,7 @@ def setup(client):
                 except Exception:
                     pass
 
-            # 4. Restore PFP
+            # 5. Restore PFP
             if backup.get("had_pfp") and os.path.exists(SAVED_PFP):
                 uploaded_photo = await client.upload_file(SAVED_PFP)
                 await client(UploadProfilePhotoRequest(file=uploaded_photo))
@@ -233,15 +294,16 @@ def setup(client):
             if os.path.exists(BACKUP_FILE):
                 os.remove(BACKUP_FILE)
 
+            display_user = f"@{orig_username}" if (had_username and orig_username) else "None"
             card = (
                 "```text\n"
                 "╔════「 🕊️ 𝗜𝗗𝗘𝗡𝗧𝗜𝗧𝗬 𝗥𝗘𝗦𝗧𝗢𝗥𝗘𝗗 ⚡ 」════╗\n"
                 "║\n"
                 f"╠─ 👤 𝗡𝗔𝗠𝗘     :: {backup.get('first_name')} {backup.get('last_name')}\n"
-                f"╠─ 🏷️ 𝗨𝗦𝗘𝗥𝗡𝗔𝗠𝗘 :: @{orig_username}\n"
+                f"╠─ 🏷️ 𝗨𝗦𝗘𝗥𝗡𝗔𝗠𝗘 :: {display_user}\n"
                 "├─ 🛡️ 𝗦𝗧𝗔𝗧𝗨𝗦   :: 100% Original Identity Restored\n"
                 "║\n"
-                "╚════════「 🔥 𝗞𝗘𝗦𝗛𝗔𝗩-𝗨𝗦𝗘𝗥𝗕𝗢𝗧 」════════╝\n"
+                "╚════════「 🔥 𝗨𝗦𝗘𝗥𝗕𝗢𝗧 𝗖𝗢𝗥𝗘 」════════╝\n"
                 "```"
             )
             await msg.edit(card)
