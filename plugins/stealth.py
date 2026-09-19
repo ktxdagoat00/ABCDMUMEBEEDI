@@ -3,19 +3,23 @@ import asyncio
 from telethon import events
 from telethon.tl.types import MessageEntityMention, MessageEntityMentionName
 
-# Set of user IDs to watch
 antitag_users = set()
-
-# Aapke account ke exact identifiers
-MY_USERNAMES = ["k3xhv"]
 MY_ID = None
+MY_USERNAMES = []
 
-async def get_my_id(client):
-    global MY_ID
+async def init_owner_info(client):
+    global MY_ID, MY_USERNAMES
     if MY_ID is None:
         me = await client.get_me()
         MY_ID = me.id
-    return MY_ID
+        names = []
+        if getattr(me, 'username', None):
+            names.append(me.username.lower())
+        if hasattr(me, 'usernames') and me.usernames:
+            for u in me.usernames:
+                if getattr(u, 'username', None):
+                    names.append(u.username.lower())
+        MY_USERNAMES = list(set(names))
 
 async def resolve_target(client, event):
     reply = await event.get_reply_message()
@@ -71,7 +75,7 @@ def setup(client):
     # --- .antitag <user/reply> ---
     @client.on(events.NewMessage(outgoing=True, pattern=r'^\.antitag(?:\s+(.*))?'))
     async def enable_antitag(event):
-        await get_my_id(client)
+        await init_owner_info(client)
         target_id = await resolve_target(client, event)
         await event.delete()
 
@@ -87,7 +91,7 @@ def setup(client):
             "┌───「 🛡️ 𝗔𝗡𝗧𝗜-𝗧𝗔𝗚 𝗘𝗡𝗚𝗔𝗚𝗘𝗗 」\n"
             f"├─ 👤 𝗧𝗔𝗥𝗚𝗘𝗧 :: {target_id}\n"
             "├─ ⚡ 𝗔𝗖𝗧𝗜𝗢𝗡 :: Purge on mention & reply\n"
-            "└───「 🔒 𝗞𝗘𝗦𝗛𝗔𝗩-𝗦𝗧𝗘𝗔𝗟𝗧𝗛 」\n"
+            "└───「 🔒 𝗦𝗧𝗘𝗔𝗟𝗧𝗛-𝗖𝗢𝗥𝗘 」\n"
             "```"
         )
         await asyncio.sleep(2)
@@ -121,33 +125,30 @@ def setup(client):
             await asyncio.sleep(2)
             await alert.delete()
 
-    # --- 100% RELIABLE SCANNER (outgoing=False) ---
+    # --- Auto Purge Listener ---
     @client.on(events.NewMessage(outgoing=False))
     async def antitag_listener(event):
         if not antitag_users:
             return
 
-        # Check sender ID
         sender_id = event.sender_id
         if not sender_id or sender_id not in antitag_users:
             return
 
-        my_id = await get_my_id(client)
+        await init_owner_info(client)
         should_delete = False
-
-        # Raw message text lowercased
         text = (event.raw_text or "").lower()
 
-        # 1. Direct Regex check for @k3xhv (Word boundary check)
+        # Check raw usernames
         for u in MY_USERNAMES:
             if f"@{u}" in text:
                 should_delete = True
                 break
 
-        # 2. Telegram entities scan (agar @ mention ya text mention format ho)
+        # Check entities
         if not should_delete and event.entities:
             for ent in event.entities:
-                if isinstance(ent, MessageEntityMentionName) and ent.user_id == my_id:
+                if isinstance(ent, MessageEntityMentionName) and ent.user_id == MY_ID:
                     should_delete = True
                     break
                 elif isinstance(ent, MessageEntityMention):
@@ -156,16 +157,15 @@ def setup(client):
                         should_delete = True
                         break
 
-        # 3. Reply check
+        # Check replies
         if not should_delete and event.is_reply:
             try:
                 reply_msg = await event.get_reply_message()
-                if reply_msg and reply_msg.sender_id == my_id:
+                if reply_msg and reply_msg.sender_id == MY_ID:
                     should_delete = True
             except Exception:
                 pass
 
-        # Execution
         if should_delete:
             try:
                 await event.delete()
