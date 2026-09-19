@@ -57,7 +57,7 @@ def setup(client):
             "╠─ • .del            :: Delete replied msg\n"
             "╠─ • .delall         :: Purge all msgs from user\n"
             "╠─ • .purgeme        :: Purge own msgs all-time\n"
-            "╠─ • .purge          :: Purge replied msgs batch\n"
+            "╠─ • .purge          :: Purge ALL msgs till current\n"
             "╠─ • .promote <1-3>  :: Promote member (3 tiers)\n"
             "╠─ • .demote <user>  :: Demote admin to member\n"
             "╠─ • .ban <id/rep>   :: Ban member with reason\n"
@@ -102,6 +102,7 @@ def setup(client):
         except Exception as e:
             await event.edit(f"```text\n[!] EXCEPTION: {e}\n```")
 
+    # --- UNLIMITED REPLIED PURGE ---
     @client.on(events.NewMessage(outgoing=True, pattern=r'^\.purge$'))
     async def purge(event):
         reply = await event.get_reply_message()
@@ -110,20 +111,32 @@ def setup(client):
             return
         
         chat = await event.get_input_chat()
-        messages_to_delete = []
-        async for msg in client.iter_messages(chat, min_id=reply.id - 1):
-            messages_to_delete.append(msg.id)
-            if len(messages_to_delete) >= 100:
-                break
-        
-        if messages_to_delete:
-            await client.delete_messages(chat, messages_to_delete)
-        
-        notice = await event.respond(
+        from_id = reply.id
+        total_deleted = 0
+        batch = []
+
+        # Delete the .purge command message itself first
+        await event.delete()
+
+        # Iterate all messages from target message to latest
+        async for msg in client.iter_messages(chat, min_id=from_id - 1, reverse=True):
+            batch.append(msg.id)
+            if len(batch) >= 100:
+                await client.delete_messages(chat, batch)
+                total_deleted += len(batch)
+                batch = []
+                await asyncio.sleep(0.3)
+
+        if batch:
+            await client.delete_messages(chat, batch)
+            total_deleted += len(batch)
+
+        notice = await client.send_message(
+            chat,
             "```text\n"
-            "┌───「 🧹 𝗣𝗨𝗥𝗚𝗘 𝗖𝗢𝗠𝗣𝗟𝗘𝗧𝗘 」\n"
-            f"└─ 🗑️ Cleaned :: {len(messages_to_delete)} messages\n"
+            "┌───「 🧹 𝗧𝗢𝗧𝗔𝗟 𝗣𝗨𝗥𝗚𝗘 𝗖𝗢𝗠𝗣𝗟𝗘𝗧𝗘 」\n"
+            f"└─ 🗑️ Cleaned :: {total_deleted} messages\n"
             "```"
         )
-        await asyncio.sleep(3)
+        await asyncio.sleep(2)
         await notice.delete()
