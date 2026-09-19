@@ -2,10 +2,17 @@ import os
 import json
 import asyncio
 from telethon import events
-from telethon.tl.functions.account import UpdateProfileRequest, UpdateUsernameRequest, UpdateEmojiStatusRequest
-from telethon.tl.functions.photos import UploadProfilePhotoRequest, DeletePhotosRequest
+from telethon.tl.functions.account import UpdateProfileRequest, UpdateUsernameRequest
+from telethon.tl.functions.photos import UploadProfilePhotoRequest
 from telethon.tl.functions.users import GetFullUserRequest
-from telethon.tl.types import EmojiStatus, EmojiStatusEmpty, EmojiStatusUntil
+
+# Safe import for emoji/music status
+try:
+    from telethon.tl.functions.account import UpdateEmojiStatusRequest
+    from telethon.tl.types import EmojiStatus, EmojiStatusEmpty
+    HAS_EMOJI_STATUS = True
+except Exception:
+    HAS_EMOJI_STATUS = False
 
 BACKUP_FILE = "state/original_identity.json"
 SAVED_PFP = "state/original_pfp.jpg"
@@ -27,7 +34,7 @@ HOMOGLYPHS = [
 def generate_stealth_usernames(target):
     variations = []
 
-    # 1. Single character homoglyph replacement (Preserving exact casing)
+    # 1. Homoglyphs (preserving case)
     for i, ch in enumerate(target):
         for orig, sub in HOMOGLYPHS:
             if ch == orig:
@@ -35,7 +42,7 @@ def generate_stealth_usernames(target):
                 if cand != target and len(cand) >= 5:
                     variations.append(cand)
 
-    # 2. As requested: Fallback to '_1', '_0', '1' if character replacement fails
+    # 2. Minimum modifications (_1 fallback)
     if len(target) <= 30:
         variations.append(f"{target}_1")
         variations.append(f"{target}_0")
@@ -48,13 +55,11 @@ async def save_original_identity(client):
     me = await client.get_me()
     full_me = await client(GetFullUserRequest(me.id))
     
-    # Check Profile Photo
     pfp_exists = False
     if me.photo:
         await client.download_profile_photo("me", file=SAVED_PFP)
         pfp_exists = True
 
-    # Extract original Emoji / Music status document_id
     status_doc_id = None
     if getattr(me, 'emoji_status', None):
         if hasattr(me.emoji_status, 'document_id'):
@@ -103,11 +108,9 @@ def setup(client):
         msg = await event.edit("```text\n┌───「 🧬 𝗜𝗡𝗜𝗧𝗜𝗔𝗧𝗜𝗡𝗚 𝗖𝗟𝗢𝗡𝗜𝗡𝗚 」\n└───「 🛰️ 𝗙𝗥𝗘𝗘𝗭𝗜𝗡𝗚 𝗢𝗥𝗜𝗚𝗜𝗡𝗔𝗟 𝗜𝗗 」\n```")
 
         try:
-            # 1. State backup
             if not os.path.exists(BACKUP_FILE):
                 await save_original_identity(client)
 
-            # 2. Target info retrieval
             target_user = await client.get_entity(target_id)
             target_full = await client(GetFullUserRequest(target_id))
 
@@ -118,16 +121,16 @@ def setup(client):
 
             await msg.edit("```text\n┌───「 🧬 𝗦𝗬𝗡𝗖𝗜𝗡𝗚 𝗜𝗗𝗘𝗡𝗧𝗜𝗧𝗬 」\n└───「 👤 𝗡𝗔𝗠𝗘 + 𝗕𝗜𝗢 + 𝗦𝗧𝗔𝗧𝗨𝗦 + 𝗣𝗙𝗣 」\n```")
 
-            # 3. Update Name & Bio
+            # Update Name & Bio
             await client(UpdateProfileRequest(
                 first_name=t_first,
                 last_name=t_last,
                 about=t_about
             ))
 
-            # 4. Sync Target Profile Music / Emoji Status
+            # Sync Emoji / Music Status
             music_status_applied = "None"
-            if getattr(target_user, 'emoji_status', None):
+            if HAS_EMOJI_STATUS and getattr(target_user, 'emoji_status', None):
                 if hasattr(target_user.emoji_status, 'document_id'):
                     doc_id = target_user.emoji_status.document_id
                     try:
@@ -136,9 +139,9 @@ def setup(client):
                         ))
                         music_status_applied = "Copied"
                     except Exception:
-                        music_status_applied = "Premium Required"
+                        music_status_applied = "Failed/Premium"
 
-            # 5. Download and upload high-res PFP
+            # Download and set Target PFP
             temp_pfp = "state/temp_clone_pfp.jpg"
             if target_user.photo:
                 await client.download_profile_photo(target_user, file=temp_pfp)
@@ -147,7 +150,7 @@ def setup(client):
                 if os.path.exists(temp_pfp):
                     os.remove(temp_pfp)
 
-            # 6. Advanced Cased Username Cloak
+            # Cased Username Cloak
             spoofed_username = "Unchanged"
             if t_username:
                 await msg.edit("```text\n┌───「 🧬 𝗖𝗟𝗢𝗔𝗞𝗜𝗡𝗚 𝗨𝗦𝗘𝗥𝗡𝗔𝗠𝗘 」\n└───「 🛰️ 𝗛𝗢𝗠𝗢𝗚𝗟𝗬𝗣𝗛 + 𝗙𝗔𝗟𝗟𝗕𝗔𝗖𝗞 」\n```")
@@ -192,32 +195,33 @@ def setup(client):
             with open(BACKUP_FILE, "r") as f:
                 backup = json.load(f)
 
-            # 1. Restore Original Name & Bio
+            # 1. Restore Name & Bio
             await client(UpdateProfileRequest(
                 first_name=backup.get("first_name", ""),
                 last_name=backup.get("last_name", ""),
                 about=backup.get("about", "")
             ))
 
-            # 2. Restore Original Username
+            # 2. Restore Username
             orig_username = backup.get("username", "")
             if orig_username:
                 try:
                     await client(UpdateUsernameRequest(orig_username))
-                except Exception as ue:
-                    print(f"Username restore log: {ue}")
+                except Exception:
+                    pass
 
-            # 3. Restore Original Emoji / Music Status
-            status_id = backup.get("status_doc_id")
-            try:
-                if status_id:
-                    await client(UpdateEmojiStatusRequest(emoji_status=EmojiStatus(document_id=status_id)))
-                else:
-                    await client(UpdateEmojiStatusRequest(emoji_status=EmojiStatusEmpty()))
-            except Exception:
-                pass
+            # 3. Restore Emoji / Music Status
+            if HAS_EMOJI_STATUS:
+                status_id = backup.get("status_doc_id")
+                try:
+                    if status_id:
+                        await client(UpdateEmojiStatusRequest(emoji_status=EmojiStatus(document_id=status_id)))
+                    else:
+                        await client(UpdateEmojiStatusRequest(emoji_status=EmojiStatusEmpty()))
+                except Exception:
+                    pass
 
-            # 4. Restore Original PFP
+            # 4. Restore PFP
             if backup.get("had_pfp") and os.path.exists(SAVED_PFP):
                 uploaded_photo = await client.upload_file(SAVED_PFP)
                 await client(UploadProfilePhotoRequest(file=uploaded_photo))
