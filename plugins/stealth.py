@@ -1,10 +1,21 @@
+import re
 import asyncio
 from telethon import events
 from telethon.tl.types import MessageEntityMention, MessageEntityMentionName
 
-# Target user IDs jinka mention/reply delete karna hai
-# Format: set of user_ids
+# Target user IDs
 antitag_users = set()
+
+# Bot owner credentials cache
+OWNER_ID = None
+OWNER_USERNAME = None
+
+async def init_owner(client):
+    global OWNER_ID, OWNER_USERNAME
+    if OWNER_ID is None:
+        me = await client.get_me()
+        OWNER_ID = me.id
+        OWNER_USERNAME = me.username.lower() if me.username else None
 
 async def resolve_target(client, event):
     reply = await event.get_reply_message()
@@ -37,7 +48,6 @@ def setup(client):
         except ValueError:
             delay = 5
 
-        # Agar delay diya hai aur text bacha hai
         msg_text = text_arg if text_arg else (reply.raw_text if reply else "")
 
         if not msg_text and not (reply and reply.media):
@@ -47,7 +57,6 @@ def setup(client):
         chat = await event.get_input_chat()
         await event.delete()
 
-        # Target message bhejo
         if reply and not text_arg:
             sent_msg = await client.send_message(chat, reply)
         else:
@@ -62,6 +71,7 @@ def setup(client):
     # --- .antitag <user/reply> ---
     @client.on(events.NewMessage(outgoing=True, pattern=r'^\.antitag(?:\s+(.*))?'))
     async def enable_antitag(event):
+        await init_owner(client)
         target_id = await resolve_target(client, event)
         await event.delete()
 
@@ -86,6 +96,7 @@ def setup(client):
     # --- .unantitag <user/reply> ---
     @client.on(events.NewMessage(outgoing=True, pattern=r'^\.unantitag(?:\s+(.*))?'))
     async def disable_antitag(event):
+        await init_owner(client)
         target_id = await resolve_target(client, event)
         await event.delete()
 
@@ -111,7 +122,7 @@ def setup(client):
             await asyncio.sleep(2)
             await alert.delete()
 
-    # --- LISTENER: Auto-delete target's reply or mention ---
+    # --- REAL-TIME PURGE LISTENER ---
     @client.on(events.NewMessage(incoming=True))
     async def antitag_listener(event):
         if not antitag_users:
@@ -121,31 +132,29 @@ def setup(client):
         if sender_id not in antitag_users:
             return
 
-        me = await client.get_me()
+        await init_owner(client)
         should_delete = False
+        raw_text = (event.raw_text or "").lower()
 
-        # Check 1: Reply to me?
-        if event.is_reply:
-            reply_msg = await event.get_reply_message()
-            if reply_msg and reply_msg.sender_id == me.id:
-                should_delete = True
+        # Condition 1: Agar message me aapka @username likha hai (Direct Text Scan)
+        if OWNER_USERNAME and f"@{OWNER_USERNAME}" in raw_text:
+            should_delete = True
 
-        # Check 2: Mention me?
+        # Condition 2: Agar message aapke kisi message ka Reply hai
+        if not should_delete and event.is_reply:
+            try:
+                reply_msg = await event.get_reply_message()
+                if reply_msg and reply_msg.sender_id == OWNER_ID:
+                    should_delete = True
+            except Exception:
+                pass
+
+        # Condition 3: Agar Telegram ki Text Mention Entity use hui ho (inline mention bina @ ke)
         if not should_delete and event.entities:
-            text = event.raw_text or ""
-            my_username = me.username.lower() if me.username else None
-
             for entity in event.entities:
-                # Text mention with user ID
-                if isinstance(entity, MessageEntityMentionName) and entity.user_id == me.id:
+                if isinstance(entity, MessageEntityMentionName) and entity.user_id == OWNER_ID:
                     should_delete = True
                     break
-                # @username mention
-                elif isinstance(entity, MessageEntityMention) and my_username:
-                    mention_text = text[entity.offset:entity.offset + entity.length].lower()
-                    if mention_text == f"@{my_username}":
-                        should_delete = True
-                        break
 
         if should_delete:
             try:
