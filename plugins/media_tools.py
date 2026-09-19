@@ -7,7 +7,7 @@ import static_ffmpeg
 import yt_dlp
 from telethon import events
 from telethon.tl.functions.photos import UploadProfilePhotoRequest
-from telethon.tl.types import DocumentAttributeAudio, DocumentAttributeVideo
+from telethon.tl.types import DocumentAttributeAudio
 
 SPY_MODE = False
 
@@ -27,95 +27,38 @@ def parse_time_to_seconds(time_str):
 
 def setup(client):
 
-    # --- .trim <start> <end> (Reply to Video / Audio) ---
-    @client.on(events.NewMessage(outgoing=True, pattern=r'^\.trim(?:\s+([^\s]+))?(?:\s+([^\s]+))?'))
-    async def trim_media(event):
-        reply = await event.get_reply_message()
-        if not reply or not (reply.video or reply.audio or reply.voice or reply.document):
-            await event.edit("```text\n[!] Reply to any audio or video to trim.\nUsage: .trim <start> <end>\nExample: .trim 01:01 11:39\n```")
-            return
-
-        start_time = event.pattern_match.group(1)
-        end_time = event.pattern_match.group(2)
-
-        if not start_time or not end_time:
-            await event.edit("```text\n[!] Invalid syntax!\nUsage: .trim 01:01 11:39\nFormat: mm:ss or hh:mm:ss\n```")
-            return
-
-        try:
-            start_sec = parse_time_to_seconds(start_time)
-            end_sec = parse_time_to_seconds(end_time)
-            if end_sec <= start_sec:
-                await event.edit("```text\n[!] Error: End time must be greater than start time.\n```")
-                return
-            duration = end_sec - start_sec
-        except Exception:
-            await event.edit("```text\n[!] Error parsing timestamps. Use format mm:ss (e.g. 01:01 11:39)\n```")
-            return
-
-        status = await event.edit("```text\n┌───「 ⏳ 𝗗𝗢𝗪𝗡𝗟𝗢𝗔𝗗𝗜𝗡𝗚 𝗠𝗘𝗗𝗜𝗔... 」\n└───「 🛰️ Preparing file for trim 」\n```")
-        input_file = None
-        output_file = None
-
-        try:
-            input_file = await client.download_media(reply)
-            base, ext = os.path.splitext(input_file)
-            output_file = f"{base}_trimmed{ext}"
-
-            await status.edit(f"```text\n┌───「 ✂️ 𝗧𝗥𝗜𝗠𝗠𝗜𝗡𝗚... 」\n├─ ⏱️ Range: {start_time} ➔ {end_time}\n└───「 ⚡ Stream Copy (Lossless) 」\n```")
-
-            # Lossless fast trim command using ffmpeg
-            cmd = [
-                "ffmpeg", "-y",
-                "-ss", str(start_sec),
-                "-i", input_file,
-                "-to", str(duration),
-                "-c", "copy",
-                output_file
-            ]
-
-            loop = asyncio.get_event_loop()
-            await loop.run_in_executor(None, lambda: subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
-
-            if not os.path.exists(output_file) or os.path.getsize(output_file) == 0:
-                await status.edit("```text\n[!] Trim failed. File might be protected or keyframes missing.\n```")
-                return
-
-            await status.edit("```text\n┌───「 📤 𝗨𝗣𝗟𝗢𝗔𝗗𝗜𝗡𝗚... 」\n└───「 ⚡ Sending trimmed media 」\n```")
-            chat = await event.get_input_chat()
-            caption = f"✂️ **Trimmed:** `{start_time}` - `{end_time}`"
-
-            await client.send_file(
-                chat,
-                output_file,
-                caption=caption,
-                reply_to=reply.id
-            )
-            await status.delete()
-
-        except Exception as e:
-            await status.edit(f"```text\n[!] Trim Error: {e}\n```")
-        finally:
-            if input_file and os.path.exists(input_file):
-                os.remove(input_file)
-            if output_file and os.path.exists(output_file):
-                os.remove(output_file)
-
-    # --- .song <name> ---
+    # --- .song <name> (Bypass YouTube Bot Verification) ---
     @client.on(events.NewMessage(outgoing=True, pattern=r'^\.song(?:\s+(.+))?'))
     async def download_song(event):
         query = event.pattern_match.group(1)
         if not query:
-            await event.edit("```text\n[!] Usage: .song <song name or link>\nExample: .song Kesariya\n```")
+            await event.edit("```text\n[!] Usage: .song <song name>\nExample: .song Kesariya\n```")
             return
 
         status = await event.edit(f"```text\n┌───「 🎵 𝗦𝗘𝗔𝗥𝗖𝗛𝗜𝗡𝗚 𝗔𝗨𝗗𝗜𝗢... 」\n└───「 🛰️ Query: {query[:25]} 」\n```")
-        
         out_template = f"song_{event.id}.%(ext)s"
-        ydl_opts = {
+
+        # Method 1: Bypass YouTube Bot Detection via Android/iOS Client
+        ydl_opts_yt = {
             'format': 'bestaudio/best',
             'outtmpl': out_template,
             'default_search': 'ytsearch1:',
+            'noplaylist': True,
+            'quiet': True,
+            'no_warnings': True,
+            'max_filesize': 45 * 1024 * 1024,
+            'extractor_args': {
+                'youtube': {
+                    'player_client': ['android', 'ios']
+                }
+            }
+        }
+
+        # Method 2: Fallback to SoundCloud (Zero IP blocks on Cloud servers)
+        ydl_opts_sc = {
+            'format': 'bestaudio/best',
+            'outtmpl': out_template,
+            'default_search': 'scsearch1:',
             'noplaylist': True,
             'quiet': True,
             'no_warnings': True,
@@ -123,16 +66,27 @@ def setup(client):
         }
 
         loop = asyncio.get_event_loop()
-        try:
-            def extract():
-                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+
+        def extract_with_fallback():
+            try:
+                with yt_dlp.YoutubeDL(ydl_opts_yt) as ydl:
                     info = ydl.extract_info(query, download=True)
-                    if 'entries' in info:
+                    if 'entries' in info and info['entries']:
+                        info = info['entries'][0]
+                    file_path = ydl.prepare_filename(info)
+                    return info, file_path
+            except Exception:
+                # Fallback to SoundCloud if YouTube denies cloud IP
+                with yt_dlp.YoutubeDL(ydl_opts_sc) as ydl:
+                    info = ydl.extract_info(query, download=True)
+                    if 'entries' in info and info['entries']:
                         info = info['entries'][0]
                     file_path = ydl.prepare_filename(info)
                     return info, file_path
 
-            info, file_path = await loop.run_in_executor(None, extract)
+        try:
+            info, file_path = await loop.run_in_executor(None, extract_with_fallback)
+            
             await status.edit("```text\n┌───「 📤 𝗨𝗣𝗟𝗢𝗔𝗗𝗜𝗡𝗚 𝗔𝗨𝗗𝗜𝗢... 」\n└───「 ⚡ Sending MP3 stream 」\n```")
             
             title = info.get('title', 'Audio Track')
@@ -153,6 +107,78 @@ def setup(client):
 
         except Exception as e:
             await status.edit(f"```text\n[!] Song Download Failed: {e}\n```")
+
+    # --- .trim <start> <end> ---
+    @client.on(events.NewMessage(outgoing=True, pattern=r'^\.trim(?:\s+([^\s]+))?(?:\s+([^\s]+))?'))
+    async def trim_media(event):
+        reply = await event.get_reply_message()
+        if not reply or not (reply.video or reply.audio or reply.voice or reply.document):
+            await event.edit("```text\n[!] Reply to audio/video to trim.\nExample: .trim 01:01 11:39\n```")
+            return
+
+        start_time = event.pattern_match.group(1)
+        end_time = event.pattern_match.group(2)
+
+        if not start_time or not end_time:
+            await event.edit("```text\n[!] Usage: .trim 01:01 11:39\n```")
+            return
+
+        try:
+            start_sec = parse_time_to_seconds(start_time)
+            end_sec = parse_time_to_seconds(end_time)
+            if end_sec <= start_sec:
+                await event.edit("```text\n[!] Error: End time must be greater than start time.\n```")
+                return
+            duration = end_sec - start_sec
+        except Exception:
+            await event.edit("```text\n[!] Invalid time format. Use mm:ss (e.g. 01:01 11:39)\n```")
+            return
+
+        status = await event.edit("```text\n┌───「 ⏳ 𝗗𝗢𝗪𝗡𝗟𝗢𝗔𝗗𝗜𝗡𝗚 𝗠𝗘𝗗𝗜𝗔... 」\n└───「 🛰️ Preparing file for trim 」\n```")
+        input_file = None
+        output_file = None
+
+        try:
+            input_file = await client.download_media(reply)
+            base, ext = os.path.splitext(input_file)
+            output_file = f"{base}_trimmed{ext}"
+
+            await status.edit(f"```text\n┌───「 ✂️ 𝗧𝗥𝗜𝗠𝗠𝗜𝗡𝗚... 」\n├─ ⏱️ Range: {start_time} ➔ {end_time}\n└───「 ⚡ Stream Copy (Lossless) 」\n```")
+
+            cmd = [
+                "ffmpeg", "-y",
+                "-ss", str(start_sec),
+                "-i", input_file,
+                "-to", str(duration),
+                "-c", "copy",
+                output_file
+            ]
+
+            loop = asyncio.get_event_loop()
+            await loop.run_in_executor(None, lambda: subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
+
+            if not os.path.exists(output_file) or os.path.getsize(output_file) == 0:
+                await status.edit("```text\n[!] Trim failed. Keyframes missing or file protected.\n```")
+                return
+
+            await status.edit("```text\n┌───「 📤 𝗨𝗣𝗟𝗢𝗔𝗗𝗜𝗡𝗚... 」\n└───「 ⚡ Sending trimmed media 」\n```")
+            chat = await event.get_input_chat()
+
+            await client.send_file(
+                chat,
+                output_file,
+                caption=f"✂️ **Trimmed:** `{start_time}` - `{end_time}`",
+                reply_to=reply.id
+            )
+            await status.delete()
+
+        except Exception as e:
+            await status.edit(f"```text\n[!] Trim Error: {e}\n```")
+        finally:
+            if input_file and os.path.exists(input_file):
+                os.remove(input_file)
+            if output_file and os.path.exists(output_file):
+                os.remove(output_file)
 
     # --- .save <reply> ---
     @client.on(events.NewMessage(outgoing=True, pattern=r'^\.save$'))
