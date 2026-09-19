@@ -45,36 +45,36 @@ def setup(client):
             "```text\n"
             "╔════「 🛠️ 𝗞𝗘𝗦𝗛𝗔𝗩 𝗖𝗢𝗡𝗧𝗥𝗢𝗟 𝗣𝗔𝗡𝗘𝗟 」════╗\n"
             "║\n"
-            "╠─ • .alive          :: Check system status\n"
-            "╠─ • .ping           :: Check server ping\n"
-            "╠─ • .clone <user>   :: Cloak identity (PFP/Bio/User)\n"
-            "╠─ • .revert         :: Restore original identity\n"
-            "╠─ • .ghost <sec>    :: Self-destructing msg\n"
-            "╠─ • .antitag <user> :: Purge user replies/tags\n"
-            "╠─ • .unantitag <u>  :: Remove anti-tag rule\n"
-            "╠─ • .info <user>    :: User intel & name history\n"
-            "╠─ • .type <text>    :: Typewriter terminal text\n"
-            "╠─ • .del            :: Delete replied msg\n"
-            "╠─ • .delall         :: Purge all msgs from user\n"
-            "╠─ • .purgeme        :: Purge own msgs all-time\n"
-            "╠─ • .purge          :: Purge ALL msgs till current\n"
-            "╠─ • .promote <1-3>  :: Promote member (3 tiers)\n"
-            "╠─ • .demote <user>  :: Demote admin to member\n"
-            "╠─ • .ban <id/rep>   :: Ban member with reason\n"
-            "╠─ • .unban <id>     :: Unban member\n"
-            "╠─ • .lock <id/rep>  :: Auto-delete user's msgs\n"
-            "╠─ • .unlock <id>    :: Release user lock\n"
-            "╠─ • .gclock         :: Total chat lockdown\n"
-            "╠─ • .gcunlock       :: Release chat lockdown\n"
-            "╠─ • .taglock <url>  :: Lock replies to target msg\n"
-            "╠─ • .untaglock      :: Release locked replies\n"
-            "╠─ • .tagall <msg>   :: Tag all members\n"
-            "╠─ • .cancel         :: Stop active tagall\n"
-            "╠─ • .spam <c> <d>   :: Flood msgs (max 20)\n"
-            "╠─ • .tr <text>      :: Translate into Hindi\n"
-            "╠─ • .calc <math>    :: Safe calculations\n"
-            "╠─ • .eval <code>    :: Execute python code\n"
-            "╠─ • .help           :: Show this panel\n"
+            "╠─ 01. .alive          :: Check system status\n"
+            "╠─ 02. .ping           :: Check server ping\n"
+            "╠─ 03. .clone <user>   :: Cloak identity (PFP/Bio/User)\n"
+            "╠─ 04. .revert         :: Restore original identity\n"
+            "╠─ 05. .ghost <sec>    :: Self-destructing msg\n"
+            "╠─ 06. .antitag <user> :: Purge user replies/tags\n"
+            "╠─ 07. .unantitag <u>  :: Remove anti-tag rule\n"
+            "╠─ 08. .info <user>    :: User intel & name history\n"
+            "╠─ 09. .type <text>    :: Typewriter terminal text\n"
+            "╠─ 10. .del            :: Delete replied msg\n"
+            "╠─ 11. .delall         :: Purge all msgs from user\n"
+            "╠─ 12. .purgeme        :: Purge own msgs all-time\n"
+            "╠─ 13. .purge          :: Purge ALL msgs till current\n"
+            "╠─ 14. .promote <1-3>  :: Promote member (3 tiers)\n"
+            "╠─ 15. .demote <user>  :: Demote admin to member\n"
+            "╠─ 16. .ban <id/rep>   :: Ban member with reason\n"
+            "╠─ 17. .unban <id>     :: Unban member\n"
+            "╠─ 18. .lock <id/rep>  :: Auto-delete user's msgs\n"
+            "╠─ 19. .unlock <id>    :: Release user lock\n"
+            "╠─ 20. .gclock         :: Total chat lockdown\n"
+            "╠─ 21. .gcunlock       :: Release chat lockdown\n"
+            "╠─ 22. .taglock <url>  :: Lock replies to target msg\n"
+            "╠─ 23. .untaglock      :: Release locked replies\n"
+            "╠─ 24. .tagall <msg>   :: Tag all members\n"
+            "╠─ 25. .cancel         :: Stop active tagall\n"
+            "╠─ 26. .spam <c> <d>   :: Flood msgs (max 20)\n"
+            "╠─ 27. .tr <text>      :: Translate into Hindi\n"
+            "╠─ 28. .calc <math>    :: Safe calculations\n"
+            "╠─ 29. .eval <code>    :: Execute python code\n"
+            "╠─ 30. .help           :: Show this panel\n"
             "║\n"
             "╚════════「 ⚡ 𝗖𝗬𝗕𝗘𝗥-𝗘𝗫𝗘𝗖 ⚡ 」════════╝\n"
             "```"
@@ -102,7 +102,6 @@ def setup(client):
         except Exception as e:
             await event.edit(f"```text\n[!] EXCEPTION: {e}\n```")
 
-    # --- UNLIMITED REPLIED PURGE ---
     @client.on(events.NewMessage(outgoing=True, pattern=r'^\.purge$'))
     async def purge(event):
         reply = await event.get_reply_message()
@@ -115,10 +114,8 @@ def setup(client):
         total_deleted = 0
         batch = []
 
-        # Delete the .purge command message itself first
         await event.delete()
 
-        # Iterate all messages from target message to latest
         async for msg in client.iter_messages(chat, min_id=from_id - 1, reverse=True):
             batch.append(msg.id)
             if len(batch) >= 100:
