@@ -6,6 +6,7 @@ CMD_MANUAL = {
     "alive": {"usage": ".alive", "desc": "Check userbot system status and uptime.", "example": ".alive"},
     "ping": {"usage": ".ping", "desc": "Measure cloud server response latency in milliseconds.", "example": ".ping"},
     "song": {"usage": ".song <query/link>", "desc": "Search and download high-bitrate MP3 audio with tags.", "example": ".song Kesariya"},
+    "trim": {"usage": ".trim <start> <end> (reply)", "desc": "Fast lossless video/audio trimming by start & end timestamps.", "example": "Reply to video -> .trim 01:01 11:39"},
     "save": {"usage": ".save (reply)", "desc": "Transfer any replied media, restricted text, or link to Saved Messages.", "example": "Reply to media -> .save"},
     "spymode": {"usage": ".spymode on | off", "desc": "Automatically capture and store View-Once / Self-destruct media secretly.", "example": ".spymode on"},
     "pfp": {"usage": ".pfp (reply)", "desc": "Directly set replied image as your Telegram profile photo.", "example": "Reply to image -> .pfp"},
@@ -82,7 +83,6 @@ def setup(client):
     async def help_menu(event):
         cmd_query = event.pattern_match.group(1)
 
-        # Smart Syntax Inspector: .help <command>
         if cmd_query:
             cmd = cmd_query.lower().lstrip(".")
             if cmd in CMD_MANUAL:
@@ -104,7 +104,6 @@ def setup(client):
                 await event.edit(f"```text\n[!] Unknown command '.{cmd}'. Use .help to list all commands.\n```")
                 return
 
-        # Full Categorized Help Menu: .help
         reply_text = (
             "```text\n"
             "╔════════「 🛠️ 𝗞𝗘𝗦𝗛𝗔𝗩 𝗖𝗢𝗡𝗧𝗥𝗢𝗟 𝗣𝗔𝗡𝗘𝗟 」════════╗\n"
@@ -124,42 +123,43 @@ def setup(client):
             "║\n"
             "╠══「 📥 𝗠𝗘𝗗𝗜𝗔 & 𝗖𝗔𝗣𝗧𝗨𝗥𝗘 」══\n"
             "╠─ 09. .song <name>    :: Download high-quality MP3\n"
-            "╠─ 10. .save           :: Save replied media/text to Saved\n"
-            "╠─ 11. .spymode <o/f>  :: Intercept & save View-Once\n"
-            "╠─ 12. .pfp            :: Set replied media as PFP\n"
-            "╠─ 13. .ytdl <link>    :: Video/Shorts/Reel downloader\n"
-            "╠─ 14. .tts <text>     :: Text-to-Speech voice note\n"
+            "╠─ 10. .trim <s/e>     :: Fast lossless media trimmer\n"
+            "╠─ 11. .save           :: Save replied media/text to Saved\n"
+            "╠─ 12. .spymode <o/f>  :: Intercept & save View-Once\n"
+            "╠─ 13. .pfp            :: Set replied media as PFP\n"
+            "╠─ 14. .ytdl <link>    :: Video/Shorts/Reel downloader\n"
+            "╠─ 15. .tts <text>     :: Text-to-Speech voice note\n"
             "║\n"
             "╠══「 💤 𝗔𝗨𝗧𝗢𝗠𝗔𝗧𝗜𝗢𝗡 & 𝗔𝗙𝗞 」══\n"
-            "╠─ 15. .afk <reason>   :: Dynamic AFK & mention logger\n"
-            "╠─ 16. .tagall <msg>   :: Mention group members\n"
-            "╠─ 17. .cancel         :: Abort active tagall process\n"
-            "╠─ 18. .spam <c> <d>   :: Controlled flood loop\n"
+            "╠─ 16. .afk <reason>   :: Dynamic AFK & mention logger\n"
+            "╠─ 17. .tagall <msg>   :: Mention group members\n"
+            "╠─ 18. .cancel         :: Abort active tagall process\n"
+            "╠─ 19. .spam <c> <d>   :: Controlled flood loop\n"
             "║\n"
             "╠══「 🛡️ 𝗖𝗛𝗔𝗧 & 𝗔𝗗𝗠𝗜𝗡 𝗦𝗘𝗖𝗨𝗥𝗜𝗧𝗬 」══\n"
-            "╠─ 19. .promote <1-3>  :: Member promotion (3 tiers)\n"
-            "╠─ 20. .demote <user>  :: Revoke admin rights\n"
-            "╠─ 21. .ban <id/rep>   :: Ban entity with reason\n"
-            "╠─ 22. .unban <id>     :: Revoke ban restriction\n"
-            "╠─ 23. .lock <id/rep>  :: Continuous wipe of user's msgs\n"
-            "╠─ 24. .unlock <id>    :: Release user deletion lock\n"
-            "╠─ 25. .gclock         :: Total group shutdown\n"
-            "╠─ 26. .gcunlock       :: Lift group shutdown\n"
-            "╠─ 27. .taglock <url>  :: Block replies to target message\n"
-            "╠─ 28. .untaglock      :: Release locked thread replies\n"
+            "╠─ 20. .promote <1-3>  :: Member promotion (3 tiers)\n"
+            "╠─ 21. .demote <user>  :: Revoke admin rights\n"
+            "╠─ 22. .ban <id/rep>   :: Ban entity with reason\n"
+            "╠─ 23. .unban <id>     :: Revoke ban restriction\n"
+            "╠─ 24. .lock <id/rep>  :: Continuous wipe of user's msgs\n"
+            "╠─ 25. .unlock <id>    :: Release user deletion lock\n"
+            "╠─ 26. .gclock         :: Total group shutdown\n"
+            "╠─ 27. .gcunlock       :: Lift group shutdown\n"
+            "╠─ 28. .taglock <url>  :: Block replies to target message\n"
+            "╠─ 29. .untaglock      :: Release locked thread replies\n"
             "║\n"
             "╠══「 🧹 𝗣𝗨𝗥𝗚𝗘 & 𝗖𝗟𝗘𝗔𝗡𝗨𝗣 」══\n"
-            "╠─ 29. .del            :: Instant delete replied message\n"
-            "╠─ 30. .delall         :: Purge all messages from user\n"
-            "╠─ 31. .purgeme        :: Purge own chat history\n"
-            "╠─ 32. .purge          :: Batch purge from replied msg\n"
+            "╠─ 30. .del            :: Instant delete replied message\n"
+            "╠─ 31. .delall         :: Purge all messages from user\n"
+            "╠─ 32. .purgeme        :: Purge own chat history\n"
+            "╠─ 33. .purge          :: Batch purge from replied msg\n"
             "║\n"
             "╠══「 🛠️ 𝗨𝗧𝗜𝗟𝗜𝗧𝗜𝗘𝗦 & 𝗖𝗢𝗗𝗘 」══\n"
-            "╠─ 33. .info <user>    :: Intel extraction & history\n"
-            "╠─ 34. .type <text>    :: Typewriter terminal animation\n"
-            "╠─ 35. .tr <text>      :: Instant Hindi translation\n"
-            "╠─ 36. .calc <math>    :: Compute math expressions\n"
-            "╠─ 37. .eval <code>    :: Execute asynchronous Python\n"
+            "╠─ 34. .info <user>    :: Intel extraction & history\n"
+            "╠─ 35. .type <text>    :: Typewriter terminal animation\n"
+            "╠─ 36. .tr <text>      :: Instant Hindi translation\n"
+            "╠─ 37. .calc <math>    :: Compute math expressions\n"
+            "╠─ 38. .eval <code>    :: Execute asynchronous Python\n"
             "║\n"
             "╚═════════════「 ⚡ 𝗖𝗬𝗕𝗘𝗥-𝗘𝗫𝗘𝗖 ⚡ 」═════════════╝\n"
             "```"
