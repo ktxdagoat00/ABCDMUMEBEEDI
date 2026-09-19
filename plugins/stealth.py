@@ -3,19 +3,19 @@ import asyncio
 from telethon import events
 from telethon.tl.types import MessageEntityMention, MessageEntityMentionName
 
-# Target user IDs
+# Set of user IDs to watch
 antitag_users = set()
 
-# Bot owner credentials cache
-OWNER_ID = None
-OWNER_USERNAME = None
+# Aapke account ke exact identifiers
+MY_USERNAMES = ["k3xhv"]
+MY_ID = None
 
-async def init_owner(client):
-    global OWNER_ID, OWNER_USERNAME
-    if OWNER_ID is None:
+async def get_my_id(client):
+    global MY_ID
+    if MY_ID is None:
         me = await client.get_me()
-        OWNER_ID = me.id
-        OWNER_USERNAME = me.username.lower() if me.username else None
+        MY_ID = me.id
+    return MY_ID
 
 async def resolve_target(client, event):
     reply = await event.get_reply_message()
@@ -71,7 +71,7 @@ def setup(client):
     # --- .antitag <user/reply> ---
     @client.on(events.NewMessage(outgoing=True, pattern=r'^\.antitag(?:\s+(.*))?'))
     async def enable_antitag(event):
-        await init_owner(client)
+        await get_my_id(client)
         target_id = await resolve_target(client, event)
         await event.delete()
 
@@ -86,7 +86,7 @@ def setup(client):
             "```text\n"
             "┌───「 🛡️ 𝗔𝗡𝗧𝗜-𝗧𝗔𝗚 𝗘𝗡𝗚𝗔𝗚𝗘𝗗 」\n"
             f"├─ 👤 𝗧𝗔𝗥𝗚𝗘𝗧 :: {target_id}\n"
-            "├─ ⚡ 𝗔𝗖𝗧𝗜𝗢𝗡 :: Auto-purge on mention/reply\n"
+            "├─ ⚡ 𝗔𝗖𝗧𝗜𝗢𝗡 :: Purge on mention & reply\n"
             "└───「 🔒 𝗞𝗘𝗦𝗛𝗔𝗩-𝗦𝗧𝗘𝗔𝗟𝗧𝗛 」\n"
             "```"
         )
@@ -96,7 +96,6 @@ def setup(client):
     # --- .unantitag <user/reply> ---
     @client.on(events.NewMessage(outgoing=True, pattern=r'^\.unantitag(?:\s+(.*))?'))
     async def disable_antitag(event):
-        await init_owner(client)
         target_id = await resolve_target(client, event)
         await event.delete()
 
@@ -122,40 +121,51 @@ def setup(client):
             await asyncio.sleep(2)
             await alert.delete()
 
-    # --- REAL-TIME PURGE LISTENER ---
-    @client.on(events.NewMessage(incoming=True))
+    # --- 100% RELIABLE SCANNER (outgoing=False) ---
+    @client.on(events.NewMessage(outgoing=False))
     async def antitag_listener(event):
         if not antitag_users:
             return
 
+        # Check sender ID
         sender_id = event.sender_id
-        if sender_id not in antitag_users:
+        if not sender_id or sender_id not in antitag_users:
             return
 
-        await init_owner(client)
+        my_id = await get_my_id(client)
         should_delete = False
-        raw_text = (event.raw_text or "").lower()
 
-        # Condition 1: Agar message me aapka @username likha hai (Direct Text Scan)
-        if OWNER_USERNAME and f"@{OWNER_USERNAME}" in raw_text:
-            should_delete = True
+        # Raw message text lowercased
+        text = (event.raw_text or "").lower()
 
-        # Condition 2: Agar message aapke kisi message ka Reply hai
+        # 1. Direct Regex check for @k3xhv (Word boundary check)
+        for u in MY_USERNAMES:
+            if f"@{u}" in text:
+                should_delete = True
+                break
+
+        # 2. Telegram entities scan (agar @ mention ya text mention format ho)
+        if not should_delete and event.entities:
+            for ent in event.entities:
+                if isinstance(ent, MessageEntityMentionName) and ent.user_id == my_id:
+                    should_delete = True
+                    break
+                elif isinstance(ent, MessageEntityMention):
+                    extracted = text[ent.offset:ent.offset + ent.length].lstrip("@")
+                    if extracted in MY_USERNAMES:
+                        should_delete = True
+                        break
+
+        # 3. Reply check
         if not should_delete and event.is_reply:
             try:
                 reply_msg = await event.get_reply_message()
-                if reply_msg and reply_msg.sender_id == OWNER_ID:
+                if reply_msg and reply_msg.sender_id == my_id:
                     should_delete = True
             except Exception:
                 pass
 
-        # Condition 3: Agar Telegram ki Text Mention Entity use hui ho (inline mention bina @ ke)
-        if not should_delete and event.entities:
-            for entity in event.entities:
-                if isinstance(entity, MessageEntityMentionName) and entity.user_id == OWNER_ID:
-                    should_delete = True
-                    break
-
+        # Execution
         if should_delete:
             try:
                 await event.delete()
