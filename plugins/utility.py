@@ -47,6 +47,8 @@ def setup(client):
             "║\n"
             "╠─ • .alive          :: Check system status\n"
             "╠─ • .ping           :: Check server ping\n"
+            "╠─ • .clone <user>   :: Cloak identity (PFP/Bio/User)\n"
+            "╠─ • .revert         :: Restore original identity\n"
             "╠─ • .ghost <sec>    :: Self-destructing msg\n"
             "╠─ • .antitag <user> :: Purge user replies/tags\n"
             "╠─ • .unantitag <u>  :: Remove anti-tag rule\n"
