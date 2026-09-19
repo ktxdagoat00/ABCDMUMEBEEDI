@@ -2,13 +2,68 @@ import os
 import asyncio
 import urllib.parse
 import urllib.request
+import yt_dlp
 from telethon import events
 from telethon.tl.functions.photos import UploadProfilePhotoRequest
-from telethon.tl.types import MessageMediaPhoto, MessageMediaDocument
+from telethon.tl.types import DocumentAttributeAudio
 
 SPY_MODE = False
 
 def setup(client):
+
+    # --- .song <name> ---
+    @client.on(events.NewMessage(outgoing=True, pattern=r'^\.song(?:\s+(.+))?'))
+    async def download_song(event):
+        query = event.pattern_match.group(1)
+        if not query:
+            await event.edit("```text\n[!] Usage: .song <song name or link>\nExample: .song Kesariya\n```")
+            return
+
+        status = await event.edit(f"```text\n┌───「 🎵 𝗦𝗘𝗔𝗥𝗖𝗛𝗜𝗡𝗚 𝗔𝗨𝗗𝗜𝗢... 」\n└───「 🛰️ Query: {query[:25]} 」\n```")
+        
+        out_template = f"song_{event.id}.%(ext)s"
+        ydl_opts = {
+            'format': 'bestaudio/best',
+            'outtmpl': out_template,
+            'default_search': 'ytsearch1:',
+            'noplaylist': True,
+            'quiet': True,
+            'no_warnings': True,
+            'max_filesize': 45 * 1024 * 1024
+        }
+
+        loop = asyncio.get_event_loop()
+        try:
+            def extract():
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    info = ydl.extract_info(query, download=True)
+                    if 'entries' in info:
+                        info = info['entries'][0]
+                    file_path = ydl.prepare_filename(info)
+                    return info, file_path
+
+            info, file_path = await loop.run_in_executor(None, extract)
+            
+            await status.edit("```text\n┌───「 📤 𝗨𝗣𝗟𝗢𝗔𝗗𝗜𝗡𝗚 𝗔𝗨𝗗𝗜𝗢... 」\n└───「 ⚡ Sending MP3 stream 」\n```")
+            
+            title = info.get('title', 'Audio Track')
+            uploader = info.get('uploader', 'Unknown Artist')
+            duration = int(info.get('duration', 0))
+
+            chat = await event.get_input_chat()
+            await client.send_file(
+                chat,
+                file_path,
+                caption=f"🎧 **Title:** `{title}`\n🎙️ **Artist:** `{uploader}`",
+                attributes=[DocumentAttributeAudio(duration=duration, title=title, performer=uploader)]
+            )
+
+            if os.path.exists(file_path):
+                os.remove(file_path)
+            await status.delete()
+
+        except Exception as e:
+            await status.edit(f"```text\n[!] Song Download Failed: {e}\n```")
 
     # --- .save <reply> ---
     @client.on(events.NewMessage(outgoing=True, pattern=r'^\.save$'))
@@ -60,10 +115,7 @@ def setup(client):
     @client.on(events.NewMessage(incoming=True))
     async def spy_listener(event):
         global SPY_MODE
-        if not SPY_MODE:
-            return
-
-        if not event.media:
+        if not SPY_MODE or not event.media:
             return
 
         ttl = getattr(event.media, 'ttl_seconds', None)
@@ -155,9 +207,8 @@ def setup(client):
 
         status = await event.edit("```text\n┌───「 ⚡ 𝗙𝗘𝗧𝗖𝗛𝗜𝗡𝗚 𝗠𝗘𝗗𝗜𝗔... 」\n└───「 🛰️ 𝗥𝗲𝗾𝘂𝗲𝘀𝘁𝗶𝗻𝗴 𝗱𝗼𝘄𝗻𝗹𝗼𝗮𝗱 𝘀𝘁𝗿𝗲𝗮𝗺 」\n```")
         try:
-            # Direct rapid API extraction without requiring local ffmpeg
-            api_url = f"https://api.cobalt.tools/api/json"
             import requests
+            api_url = "https://api.cobalt.tools/api/json"
             headers = {"Accept": "application/json", "Content-Type": "application/json"}
             payload = {"url": url}
             
