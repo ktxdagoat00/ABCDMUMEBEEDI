@@ -11,7 +11,6 @@ CMD_MANUAL = {
     "save": {"usage": ".save (reply)", "desc": "Transfer any media/text to Saved Messages.", "example": "Reply -> .save"},
     "spymode": {"usage": ".spymode on | off", "desc": "Capture View-Once media secretly to Saved.", "example": ".spymode on"},
     "pfp": {"usage": ".pfp (reply)", "desc": "Directly set replied image as profile photo.", "example": "Reply -> .pfp"},
-    "ytdl": {"usage": ".ytdl <link>", "desc": "Download video from direct supported stream.", "example": ".ytdl <link>"},
     "tts": {"usage": ".tts <text>", "desc": "Convert text into a playable voice note.", "example": ".tts Namaste bhai"},
     "afk": {"usage": ".afk <reason>", "desc": "Dynamic AFK status with mention logs.", "example": ".afk Lunch break"},
     "ghost": {"usage": ".ghost <sec> <text>", "desc": "Timed self-destructing text (e.g. 0.5s).", "example": ".ghost 0.5 Boom"},
@@ -29,14 +28,14 @@ CMD_MANUAL = {
 
 def setup(client):
 
-    # --- .info with SangMata Integration ---
+    # --- .info with Direct SangMata Input Engine ---
     @client.on(events.NewMessage(outgoing=True, pattern=r'^\.info(?:\s+(.+))?'))
     async def user_info(event):
         reply = await event.get_reply_message()
         user_arg = event.pattern_match.group(1)
         user = None
 
-        status = await event.edit("```text\n┌───「 🕵️ 𝗙𝗘𝗧𝗖𝗛𝗜𝗡𝗚 𝗜𝗡𝗧𝗘𝗟... 」\n└───「 🛰️ Querying SangMata Engine 」\n```")
+        status = await event.edit("```text\n┌───「 🕵️ 𝗙𝗘𝗧𝗖𝗛𝗜𝗡𝗚 𝗜𝗡𝗧𝗘𝗟... 」\n└───「 🛰️ Scanning SangMata Records 」\n```")
 
         if reply:
             user = await reply.get_sender()
@@ -62,25 +61,33 @@ def setup(client):
         is_bot = "Yes 🤖" if getattr(user, 'bot', False) else "No 👤"
         is_scam = "YES ⚠️" if getattr(user, 'scam', False) else "Clean 🛡️"
 
-        # Background Query to SangMata Bot
-        sangmata_res = "No recorded changes found."
-        try:
-            async with client.conversation("@SangMata_beta_bot", timeout=5) as conv:
-                await conv.send_message(f"/search_id {uid}")
-                bot_reply = await conv.get_response()
-                await conv.mark_read()
-                if bot_reply and bot_reply.text:
-                    sangmata_res = bot_reply.text
-        except Exception:
+        # Direct Input Query to SangMata (Sending raw UID / username)
+        history_text = "No history recorded for this user."
+        target_bots = ["@SangMata_beta_bot", "@SangMata_BOT"]
+
+        for sbot in target_bots:
             try:
-                async with client.conversation("@SangMata_BOT", timeout=5) as conv:
-                    await conv.send_message(f"/search_id {uid}")
-                    bot_reply = await conv.get_response()
+                async with client.conversation(sbot, timeout=6) as conv:
+                    # Send direct raw User ID
+                    await conv.send_message(str(uid))
+                    resp = await conv.get_response()
                     await conv.mark_read()
-                    if bot_reply and bot_reply.text:
-                        sangmata_res = bot_reply.text
+                    
+                    if resp and resp.text:
+                        raw = resp.text.strip()
+                        # If bot asks to /start first, handle it
+                        if "/start" in raw:
+                            await conv.send_message("/start")
+                            await conv.get_response()
+                            await conv.send_message(str(uid))
+                            resp = await conv.get_response()
+                            raw = resp.text.strip() if resp else ""
+                        
+                        if raw:
+                            history_text = raw
+                            break
             except Exception:
-                sangmata_res = "SangMata Bot is currently busy / slow."
+                continue
 
         card = (
             "```text\n"
@@ -94,7 +101,7 @@ def setup(client):
             f"╠─ 🚨 𝗦𝗖𝗔𝗠/𝗙𝗔𝗞𝗘  :: {is_scam}\n"
             "║\n"
             "╠══「 📜 𝗦𝗔𝗡𝗚𝗠𝗔𝗧𝗔 𝗛𝗜𝗦𝗧𝗢𝗥𝗬 」══\n"
-            f"{sangmata_res}\n"
+            f"{history_text}\n"
             "║\n"
             "╚══════════════════════════════════════════╝\n"
             "```"
@@ -183,45 +190,44 @@ def setup(client):
             "╠─ 11. .save           :: Save replied media/text to Saved\n"
             "╠─ 12. .spymode <o/f>  :: Intercept & save View-Once\n"
             "╠─ 13. .pfp            :: Set replied media as PFP\n"
-            "╠─ 14. .ytdl <link>    :: Video/Shorts/Reel downloader\n"
-            "╠─ 15. .tts <text>     :: Text-to-Speech voice note\n"
+            "╠─ 14. .tts <text>     :: Text-to-Speech voice note\n"
             "║\n"
             "╠══「 💤 𝗔𝗨𝗧𝗢𝗠𝗔𝗧𝗜𝗢𝗡 & 𝗔𝗙𝗞 」══\n"
-            "╠─ 16. .afk <reason>   :: Dynamic AFK & mention logger\n"
-            "╠─ 17. .tagall <msg>   :: Mention group members\n"
-            "╠─ 18. .cancel         :: Abort active tagall process\n"
-            "╠─ 19. .spam <c> <d>   :: Controlled flood loop\n"
+            "╠─ 15. .afk <reason>   :: Dynamic AFK & mention logger\n"
+            "╠─ 16. .tagall <msg>   :: Mention group members\n"
+            "╠─ 17. .cancel         :: Abort active tagall process\n"
+            "╠─ 18. .spam <c> <d>   :: Controlled flood loop\n"
             "║\n"
             "╠══「 🛡️ 𝗖𝗛𝗔𝗧 & 𝗔𝗗𝗠𝗜𝗡 𝗦𝗘𝗖𝗨𝗥𝗜𝗧𝗬 」══\n"
-            "╠─ 20. .gban <user>    :: Global Ban across all your chats\n"
-            "╠─ 21. .ungban <user>  :: Global Unban across all your chats\n"
-            "╠─ 22. .gmute <user>   :: Global Mute across all your chats\n"
-            "╠─ 23. .ungmute <user> :: Global Unmute across all your chats\n"
-            "╠─ 24. .gpin           :: Global Pin replied msg everywhere\n"
-            "╠─ 25. .ungpin         :: Global Unpin across all chats\n"
-            "╠─ 26. .promote <1-3>  :: Member promotion (3 tiers)\n"
-            "╠─ 27. .demote <user>  :: Revoke admin rights\n"
-            "╠─ 28. .ban <id/rep>   :: Ban entity with reason\n"
-            "╠─ 29. .unban <id>     :: Revoke ban restriction\n"
-            "╠─ 30. .lock <id/rep>  :: Continuous wipe of user's msgs\n"
-            "╠─ 31. .unlock <id>    :: Release user deletion lock\n"
-            "╠─ 32. .gclock         :: Total group shutdown\n"
-            "╠─ 33. .gcunlock       :: Lift group shutdown\n"
-            "╠─ 34. .taglock <url>  :: Block replies to target message\n"
-            "╠─ 35. .untaglock      :: Release locked thread replies\n"
+            "╠─ 19. .gban <user>    :: Global Ban across all your chats\n"
+            "╠─ 20. .ungban <user>  :: Global Unban across all your chats\n"
+            "╠─ 21. .gmute <user>   :: Global Mute across all your chats\n"
+            "╠─ 22. .ungmute <user> :: Global Unmute across all your chats\n"
+            "╠─ 23. .gpin           :: Global Pin replied msg everywhere\n"
+            "╠─ 24. .ungpin         :: Global Unpin across all chats\n"
+            "╠─ 25. .promote <1-3>  :: Member promotion (3 tiers)\n"
+            "╠─ 26. .demote <user>  :: Revoke admin rights\n"
+            "╠─ 27. .ban <id/rep>   :: Ban entity with reason\n"
+            "╠─ 28. .unban <id>     :: Revoke ban restriction\n"
+            "╠─ 29. .lock <id/rep>  :: Continuous wipe of user's msgs\n"
+            "╠─ 30. .unlock <id>    :: Release user deletion lock\n"
+            "╠─ 31. .gclock         :: Total group shutdown\n"
+            "╠─ 32. .gcunlock       :: Lift group shutdown\n"
+            "╠─ 33. .taglock <url>  :: Block replies to target message\n"
+            "╠─ 34. .untaglock      :: Release locked thread replies\n"
             "║\n"
             "╠══「 🧹 𝗣𝗨𝗥𝗚𝗘 & 𝗖𝗟𝗘𝗔𝗡𝗨𝗣 」══\n"
-            "╠─ 36. .del            :: Instant delete replied message\n"
-            "╠─ 37. .delall         :: Purge all messages from user\n"
-            "╠─ 38. .purgeme        :: Purge own chat history\n"
-            "╠─ 39. .purge          :: Batch purge from replied msg\n"
+            "╠─ 35. .del            :: Instant delete replied message\n"
+            "╠─ 36. .delall         :: Purge all messages from user\n"
+            "╠─ 37. .purgeme        :: Purge own chat history\n"
+            "╠─ 38. .purge          :: Batch purge from replied msg\n"
             "║\n"
             "╠══「 🛠️ 𝗨𝗧𝗜𝗟𝗜𝗧𝗜𝗘𝗦 & 𝗖𝗢𝗗𝗘 」══\n"
-            "╠─ 40. .info <user>    :: SangMata history & intel\n"
-            "╠─ 41. .type <text>    :: Typewriter terminal animation\n"
-            "╠─ 42. .tr <text>      :: Instant Hindi translation\n"
-            "╠─ 43. .calc <math>    :: Compute math expressions\n"
-            "╠─ 44. .eval <code>    :: Execute asynchronous Python\n"
+            "╠─ 39. .info <user>    :: SangMata history & intel\n"
+            "╠─ 40. .type <text>    :: Typewriter terminal animation\n"
+            "╠─ 41. .tr <text>      :: Instant Hindi translation\n"
+            "╠─ 42. .calc <math>    :: Compute math expressions\n"
+            "╠─ 43. .eval <code>    :: Execute asynchronous Python\n"
             "║\n"
             "╚═════════════「 ⚡ 𝗖𝗬𝗕𝗘𝗥-𝗘𝗫𝗘𝗖 ⚡ 」═════════════╝\n"
             "```"

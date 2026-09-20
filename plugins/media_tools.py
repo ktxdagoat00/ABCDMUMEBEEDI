@@ -24,59 +24,6 @@ def parse_time_to_seconds(time_str):
 
 def setup(client):
 
-    # --- .ytdl <link> (Multi-Gateway Engine) ---
-    @client.on(events.NewMessage(outgoing=True, pattern=r'^\.ytdl(?:\s+(.+))?'))
-    async def download_video(event):
-        url = event.pattern_match.group(1)
-        if not url:
-            await event.edit("```text\n[!] Usage: .ytdl <video link>\n```")
-            return
-
-        status = await event.edit("```text\n┌───「 ⚡ 𝗙𝗘𝗧𝗖𝗛𝗜𝗡𝗚 𝗠𝗘𝗗𝗜𝗔... 」\n└───「 🛰️ Engaging download tunnel 」\n```")
-
-        # Gateway 1: Using Background Bot Tunnel (Bypasses all Datacenter/Render IP blocks)
-        try:
-            async with client.conversation("@YtbDownBot", timeout=12) as conv:
-                await conv.send_message(url)
-                bot_msg = await conv.get_response()
-                if bot_msg.media:
-                    chat = await event.get_input_chat()
-                    await client.send_file(chat, bot_msg.media, caption="🎬 **Downloaded Video**")
-                    await conv.mark_read()
-                    await status.delete()
-                    return
-        except Exception:
-            pass
-
-        # Gateway 2: Direct yt-dlp Mobile Extraction (Works for Reels, TikTok, Twitter, Shorts)
-        out_template = f"video_{event.id}.mp4"
-        ydl_opts = {
-            'format': 'best[ext=mp4]/best',
-            'outtmpl': out_template,
-            'quiet': True,
-            'no_warnings': True,
-            'max_filesize': 48 * 1024 * 1024,
-            'user_agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_5 like Mac OS X) AppleWebKit/605.1.15'
-        }
-
-        loop = asyncio.get_event_loop()
-        try:
-            def extract():
-                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                    ydl.download([url])
-                return out_template
-
-            fn = await loop.run_in_executor(None, extract)
-            if os.path.exists(fn):
-                await status.edit("```text\n┌───「 📤 𝗨𝗣𝗟𝗢𝗔𝗗𝗜𝗡𝗚... 」\n└───「 ⚡ Sending file 」\n```")
-                chat = await event.get_input_chat()
-                await client.send_file(chat, fn, caption="🎬 **Downloaded Video**", supports_streaming=True)
-                os.remove(fn)
-                await status.delete()
-                return
-        except Exception as e:
-            await status.edit(f"```text\n[!] Video Extraction Failed: {e}\nTip: Instagram Reels & Shorts work seamlessly.\n```")
-
     # --- .song <name> ---
     @client.on(events.NewMessage(outgoing=True, pattern=r'^\.song(?:\s+(.+))?'))
     async def download_song(event):
