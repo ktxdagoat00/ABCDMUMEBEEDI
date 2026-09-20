@@ -11,8 +11,6 @@ from telethon.tl.functions.photos import UploadProfilePhotoRequest
 from telethon.tl.types import DocumentAttributeAudio
 
 SPY_MODE = False
-
-# Ensure static ffmpeg binary path is active
 static_ffmpeg.add_paths()
 
 def parse_time_to_seconds(time_str):
@@ -33,82 +31,72 @@ def setup(client):
     async def download_video(event):
         url = event.pattern_match.group(1)
         if not url:
-            await event.edit("```text\n[!] Usage: .ytdl <video/shorts/reels link>\n```")
+            await event.edit("```text\n[!] Usage: .ytdl <video link>\n```")
             return
 
-        status = await event.edit("```text\n┌───「 ⚡ 𝗙𝗘𝗧𝗖𝗛𝗜𝗡𝗚 𝗠𝗘𝗗𝗜𝗔... 」\n└───「 🛰️ Bypassing security stream 」\n```")
-        out_template = f"video_{event.id}.%(ext)s"
+        status = await event.edit("```text\n┌───「 ⚡ 𝗙𝗘𝗧𝗖𝗛𝗜𝗡𝗚 𝗠𝗘𝗗𝗜𝗔... 」\n└───「 🛰️ Bypassing server restrictions 」\n```")
+        loop = asyncio.get_event_loop()
+        stream_url = None
 
-        # Bypass YouTube IP Block using mweb / android_creator client
+        # Primary & Secondary API Routers to extract direct MP4 without cloud IP ban
+        def fetch_api_stream():
+            routers = [
+                f"https://api.vkrdownloader.com/server?vkr={urllib.parse.quote(url)}",
+                f"https://api.onlinevideoconverter.pro/api/convert?url={urllib.parse.quote(url)}"
+            ]
+            for r_url in routers:
+                try:
+                    res = requests.get(r_url, timeout=10).json()
+                    # Check common json keys
+                    if "data" in res and "url" in res["data"]:
+                        return res["data"]["url"]
+                    if "url" in res:
+                        return res["url"]
+                    if "download_url" in res:
+                        return res["download_url"]
+                except Exception:
+                    continue
+            return None
+
+        stream_url = await loop.run_in_executor(None, fetch_api_stream)
+
+        if stream_url:
+            try:
+                await status.edit("```text\n┌───「 📤 𝗨𝗣𝗟𝗢𝗔𝗗𝗜𝗡𝗚... 」\n└───「 ⚡ Sending video stream 」\n```")
+                chat = await event.get_input_chat()
+                await client.send_file(chat, stream_url, caption="🎬 **Downloaded Video**")
+                await status.delete()
+                return
+            except Exception:
+                pass
+
+        # Fallback to local yt-dlp with mobile headers
+        out_template = f"video_{event.id}.mp4"
         ydl_opts = {
             'format': 'best[ext=mp4]/best',
             'outtmpl': out_template,
             'quiet': True,
             'no_warnings': True,
             'max_filesize': 48 * 1024 * 1024,
-            'extractor_args': {
-                'youtube': {
-                    'player_client': ['mweb', 'android_embedded']
-                }
-            }
+            'user_agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_5 like Mac OS X) AppleWebKit/605.1.15'
         }
 
-        loop = asyncio.get_event_loop()
-        file_path = None
-        title = "Downloaded Media"
-
-        # Attempt 1: Direct yt-dlp with mweb spoofing
-        def run_ytdl():
+        def run_fallback():
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                inf = ydl.extract_info(url, download=True)
-                fn = ydl.prepare_filename(inf)
-                return inf, fn
+                ydl.download([url])
+            return out_template
 
         try:
-            info, file_path = await loop.run_in_executor(None, run_ytdl)
-            title = info.get('title', 'Downloaded Media')
-        except Exception:
-            # Attempt 2: Fallback to fast external gateway if Cloud IP is strictly banned
-            try:
-                def run_gateway():
-                    api_endpoints = [
-                        "https://cobalt-api.kwiatekm.com/",
-                        "https://api.wuk.sh/"
-                    ]
-                    headers = {"Accept": "application/json", "Content-Type": "application/json"}
-                    for ep in api_endpoints:
-                        try:
-                            r = requests.post(ep, json={"url": url}, headers=headers, timeout=12)
-                            res = r.json()
-                            if "url" in res:
-                                return res["url"]
-                        except Exception:
-                            continue
-                    return None
-
-                stream_url = await loop.run_in_executor(None, run_gateway)
-                if stream_url:
-                    chat = await event.get_input_chat()
-                    await status.edit("```text\n┌───「 📤 𝗨𝗣𝗟𝗢𝗔𝗗𝗜𝗡𝗚... 」\n└───「 ⚡ Streaming video file 」\n```")
-                    await client.send_file(chat, stream_url, caption="🎬 **Downloaded Video**")
-                    await status.delete()
-                    return
-            except Exception:
-                pass
-
-        if file_path and os.path.exists(file_path):
-            await status.edit("```text\n┌───「 📤 𝗨𝗣𝗟𝗢𝗔𝗗𝗜𝗡𝗚... 」\n└───「 ⚡ Sending video to chat 」\n```")
-            chat = await event.get_input_chat()
-            await client.send_file(
-                chat,
-                file_path,
-                caption=f"🎬 **{title[:40]}**",
-                supports_streaming=True
-            )
-            os.remove(file_path)
-            await status.delete()
-        else:
-            await status.edit("```text\n[!] Video Extraction Failed: YouTube blocked this cloud IP.\nTip: Reels, Shorts & TikTok work 100%.\n```")
+            fn = await loop.run_in_executor(None, run_fallback)
+            if os.path.exists(fn):
+                await status.edit("```text\n┌───「 📤 𝗨𝗣𝗟𝗢𝗔𝗗𝗜𝗡𝗚... 」\n└───「 ⚡ Sending downloaded file 」\n```")
+                chat = await event.get_input_chat()
+                await client.send_file(chat, fn, caption="🎬 **Downloaded Video**", supports_streaming=True)
+                os.remove(fn)
+                await status.delete()
+                return
+        except Exception as e:
+            await status.edit(f"```text\n[!] Extraction failed: Cloud IP rate-limited.\nError: {e}\n```")
 
     # --- .song <name> ---
     @client.on(events.NewMessage(outgoing=True, pattern=r'^\.song(?:\s+(.+))?'))
@@ -121,7 +109,6 @@ def setup(client):
         status = await event.edit(f"```text\n┌───「 🎵 𝗦𝗘𝗔𝗥𝗖𝗛𝗜𝗡𝗚 𝗔𝗨𝗗𝗜𝗢... 」\n└───「 🛰️ Query: {query[:25]} 」\n```")
         out_template = f"song_{event.id}.%(ext)s"
 
-        # Method 1: SoundCloud primary (No IP block on cloud datacenter)
         ydl_opts_sc = {
             'format': 'bestaudio/best',
             'outtmpl': out_template,
@@ -132,44 +119,17 @@ def setup(client):
             'max_filesize': 45 * 1024 * 1024
         }
 
-        # Method 2: YouTube with mweb fallback
-        ydl_opts_yt = {
-            'format': 'bestaudio/best',
-            'outtmpl': out_template,
-            'default_search': 'ytsearch1:',
-            'noplaylist': True,
-            'quiet': True,
-            'no_warnings': True,
-            'max_filesize': 45 * 1024 * 1024,
-            'extractor_args': {
-                'youtube': {
-                    'player_client': ['mweb', 'android_embedded']
-                }
-            }
-        }
-
         loop = asyncio.get_event_loop()
-
         def extract_audio():
-            # Try SoundCloud first to prevent bot verification errors
-            try:
-                with yt_dlp.YoutubeDL(ydl_opts_sc) as ydl:
-                    inf = ydl.extract_info(query, download=True)
-                    if 'entries' in inf and inf['entries']:
-                        inf = inf['entries'][0]
-                    return inf, ydl.prepare_filename(inf)
-            except Exception:
-                with yt_dlp.YoutubeDL(ydl_opts_yt) as ydl:
-                    inf = ydl.extract_info(query, download=True)
-                    if 'entries' in inf and inf['entries']:
-                        inf = inf['entries'][0]
-                    return inf, ydl.prepare_filename(inf)
+            with yt_dlp.YoutubeDL(ydl_opts_sc) as ydl:
+                inf = ydl.extract_info(query, download=True)
+                if 'entries' in inf and inf['entries']:
+                    inf = inf['entries'][0]
+                return inf, ydl.prepare_filename(inf)
 
         try:
             info, file_path = await loop.run_in_executor(None, extract_audio)
-            
             await status.edit("```text\n┌───「 📤 𝗨𝗣𝗟𝗢𝗔𝗗𝗜𝗡𝗚 𝗔𝗨𝗗𝗜𝗢... 」\n└───「 ⚡ Sending MP3 stream 」\n```")
-            
             title = info.get('title', 'Audio Track')
             uploader = info.get('uploader', 'Unknown Artist')
             duration = int(info.get('duration', 0))
@@ -181,11 +141,9 @@ def setup(client):
                 caption=f"🎧 **Title:** `{title}`\n🎙️ **Artist:** `{uploader}`",
                 attributes=[DocumentAttributeAudio(duration=duration, title=title, performer=uploader)]
             )
-
             if os.path.exists(file_path):
                 os.remove(file_path)
             await status.delete()
-
         except Exception as e:
             await status.edit(f"```text\n[!] Song Download Failed: {e}\n```")
 
@@ -226,33 +184,18 @@ def setup(client):
 
             await status.edit(f"```text\n┌───「 ✂️ 𝗧𝗥𝗜𝗠𝗠𝗜𝗡𝗚... 」\n├─ ⏱️ Range: {start_time} ➔ {end_time}\n└───「 ⚡ Stream Copy (Lossless) 」\n```")
 
-            cmd = [
-                "ffmpeg", "-y",
-                "-ss", str(start_sec),
-                "-i", input_file,
-                "-to", str(duration),
-                "-c", "copy",
-                output_file
-            ]
-
+            cmd = ["ffmpeg", "-y", "-ss", str(start_sec), "-i", input_file, "-to", str(duration), "-c", "copy", output_file]
             loop = asyncio.get_event_loop()
             await loop.run_in_executor(None, lambda: subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
 
             if not os.path.exists(output_file) or os.path.getsize(output_file) == 0:
-                await status.edit("```text\n[!] Trim failed. Keyframes missing or file protected.\n```")
+                await status.edit("```text\n[!] Trim failed. Keyframes missing or format unsupported.\n```")
                 return
 
             await status.edit("```text\n┌───「 📤 𝗨𝗣𝗟𝗢𝗔𝗗𝗜𝗡𝗚... 」\n└───「 ⚡ Sending trimmed media 」\n```")
             chat = await event.get_input_chat()
-
-            await client.send_file(
-                chat,
-                output_file,
-                caption=f"✂️ **Trimmed:** `{start_time}` - `{end_time}`",
-                reply_to=reply.id
-            )
+            await client.send_file(chat, output_file, caption=f"✂️ **Trimmed:** `{start_time}` - `{end_time}`", reply_to=reply.id)
             await status.delete()
-
         except Exception as e:
             await status.edit(f"```text\n[!] Trim Error: {e}\n```")
         finally:
@@ -266,10 +209,9 @@ def setup(client):
     async def save_media(event):
         reply = await event.get_reply_message()
         if not reply:
-            await event.edit("```text\n[!] Reply to any text, link, photo or video to save.\n```")
+            await event.edit("```text\n[!] Reply to any media or text to save.\n```")
             return
-
-        status = await event.edit("```text\n┌───「 📥 𝗦𝗔𝗩𝗜𝗡𝗚... 」\n└───「 🛰️ 𝗧𝗥𝗔𝗡𝗦𝗙𝗘𝗥𝗥𝗜𝗡𝗚 𝗧𝗢 𝗦𝗔𝗩𝗘𝗗 」\n```")
+        status = await event.edit("```text\n┌───「 📥 𝗦𝗔𝗩𝗜𝗡𝗚... 」\n└───「 📁 Moving to Saved Messages 」\n```")
         try:
             if reply.media:
                 path = await client.download_media(reply)
@@ -279,8 +221,7 @@ def setup(client):
                     os.remove(path)
             else:
                 await client.send_message("me", reply.raw_text)
-
-            await status.edit("```text\n┌───「 ✅ 𝗦𝗔𝗩𝗘𝗗 𝗦𝗨𝗖𝗖𝗘𝗦𝗦𝗙𝗨𝗟𝗟𝗬 」\n└───「 📁 𝗦𝗧𝗢𝗥𝗘𝗗 𝗜𝗡 𝗦𝗔𝗩𝗘𝗗 𝗠𝗘𝗦𝗦𝗔𝗚𝗘𝗦 」\n```")
+            await status.edit("```text\n┌───「 ✅ 𝗦𝗔𝗩𝗘𝗗 𝗦𝗨𝗖𝗖𝗘𝗦𝗦𝗙𝗨𝗟𝗟𝗬 」\n└───「 📁 Stored in Saved Messages 」\n```")
             await asyncio.sleep(2)
             await status.delete()
         except Exception as e:
@@ -291,36 +232,27 @@ def setup(client):
     async def toggle_spymode(event):
         global SPY_MODE
         arg = event.pattern_match.group(1)
-
         if not arg:
             curr = "ACTIVE 🟢" if SPY_MODE else "DISABLED 🔴"
             await event.edit(f"```text\n[!] SpyMode Status: {curr}\nUsage: .spymode on | off\n```")
             return
-
-        if arg.lower() == "on":
-            SPY_MODE = True
-            await event.edit("```text\n┌───「 🕵️ 𝗦𝗣𝗬𝗠𝗢𝗗𝗘 : 𝗢𝗡 」\n└───「 🛰️ 𝗩𝗶𝗲𝘄-𝗢𝗻𝗰𝗲 𝗠𝗲𝗱𝗶𝗮 𝗔𝘂𝘁𝗼-𝗖𝗮𝗽𝘁𝘂𝗿𝗲 𝗔𝗰𝘁𝗶𝘃𝗲 」\n```")
-        else:
-            SPY_MODE = False
-            await event.edit("```text\n┌───「 🕵️ 𝗦𝗣𝗬𝗠𝗢𝗗𝗘 : 𝗢𝗙𝗙 」\n└───「 🔒 𝗠𝗲𝗱𝗶𝗮 𝗔𝘂𝘁𝗼-𝗖𝗮𝗽𝘁𝘂𝗿𝗲 𝗦𝘁𝗼𝗽𝗽𝗲𝗱 」\n```")
-        
+        SPY_MODE = (arg.lower() == "on")
+        state = "ON 🟢" if SPY_MODE else "OFF 🔴"
+        await event.edit(f"```text\n┌───「 🕵️ 𝗦𝗣𝗬𝗠𝗢𝗗𝗘 : {state} 」\n└───「 View-Once Interceptor Updated 」\n```")
         await asyncio.sleep(2)
         await event.delete()
 
-    # --- View-Once Spy Listener ---
     @client.on(events.NewMessage(incoming=True))
     async def spy_listener(event):
         global SPY_MODE
         if not SPY_MODE or not event.media:
             return
-
         ttl = getattr(event.media, 'ttl_seconds', None)
         if ttl is not None and ttl > 0:
             try:
                 sender = await event.get_sender()
                 sender_name = getattr(sender, 'first_name', 'Unknown')
                 uname = f"@{sender.username}" if getattr(sender, 'username', None) else f"ID: {event.sender_id}"
-                
                 path = await client.download_media(event.message)
                 info = (
                     "```text\n"
@@ -343,15 +275,14 @@ def setup(client):
         if not reply or not reply.media:
             await event.edit("```text\n[!] Reply to an image to set as PFP.\n```")
             return
-
-        status = await event.edit("```text\n┌───「 🖼️ 𝗣𝗥𝗢𝗖𝗘𝗦𝗦𝗜𝗡𝗚 𝗣𝗙𝗣... 」\n└───「 🛰️ 𝗨𝗣𝗟𝗢𝗔𝗗𝗜𝗡𝗚 𝗧𝗢 𝗣𝗥𝗢𝗙𝗜𝗟𝗘 」\n```")
+        status = await event.edit("```text\n┌───「 🖼️ 𝗣𝗥𝗢𝗖𝗘𝗦𝗦𝗜𝗡𝗚 𝗣𝗙𝗣... 」\n└───「 🛰️ Uploading to profile 」\n```")
         try:
             path = await client.download_media(reply)
             uploaded = await client.upload_file(path)
             await client(UploadProfilePhotoRequest(file=uploaded))
             if path and os.path.exists(path):
                 os.remove(path)
-            await status.edit("```text\n┌───「 ✅ 𝗣𝗙𝗣 𝗨𝗣𝗗𝗔𝗧𝗘𝗗 」\n└───「 👤 𝗡𝗲𝘄 𝗽𝗿𝗼𝗳𝗶𝗹𝗲 𝗽𝗵𝗼𝘁𝗼 𝗮𝗰𝘁𝗶𝘃𝗲 」\n```")
+            await status.edit("```text\n┌───「 ✅ 𝗣𝗙𝗣 𝗨𝗣𝗗𝗔𝗧𝗘𝗗 」\n└───「 👤 New profile photo active 」\n```")
             await asyncio.sleep(2)
             await status.delete()
         except Exception as e:
@@ -363,30 +294,22 @@ def setup(client):
         arg = event.pattern_match.group(1)
         reply = await event.get_reply_message()
         text = arg if arg else (reply.raw_text if reply else "")
-
         if not text:
-            await event.edit("```text\n[!] Provide text or reply to a message: .tts <text>\n```")
+            await event.edit("```text\n[!] Provide text or reply: .tts <text>\n```")
             return
-
-        status = await event.edit("```text\n┌───「 🎙️ 𝗚𝗘𝗡𝗘𝗥𝗔𝗧𝗜𝗡𝗚 𝗔𝗨𝗗𝗜𝗢... 」\n└───「 ⚡ 𝗖𝗼𝗻𝘃𝗲𝗿𝘁𝗶𝗻𝗴 𝘁𝗲𝘅𝘁 𝘁𝗼 𝘃𝗼𝗶𝗰𝗲 」\n```")
+        status = await event.edit("```text\n┌───「 🎙️ 𝗚𝗘𝗡𝗘𝗥𝗔𝗧𝗜𝗡𝗚 𝗔𝗨𝗗𝗜𝗢... 」\n└───「 ⚡ Converting text to voice 」\n```")
         out_file = f"tts_{event.id}.mp3"
-
         try:
             encoded_text = urllib.parse.quote(text[:200])
             url = f"https://translate.google.com/translate_tts?ie=UTF-8&q={encoded_text}&tl=hi&client=tw-ob"
-            
             req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
             loop = asyncio.get_event_loop()
-            
             def fetch_audio():
                 with urllib.request.urlopen(req) as resp, open(out_file, 'wb') as f:
                     f.write(resp.read())
-
             await loop.run_in_executor(None, fetch_audio)
-
             chat = await event.get_input_chat()
             await client.send_file(chat, out_file, voice_note=True)
-            
             if os.path.exists(out_file):
                 os.remove(out_file)
             await status.delete()

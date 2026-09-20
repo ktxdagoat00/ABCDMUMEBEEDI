@@ -1,48 +1,114 @@
 import time
 import asyncio
 from telethon import events
+from telethon.tl.types import User
+
+# In-memory history tracking database
+USER_NAME_HISTORY = {}
+USER_UNAME_HISTORY = {}
 
 CMD_MANUAL = {
     "alive": {"usage": ".alive", "desc": "Check userbot system status and uptime.", "example": ".alive"},
     "ping": {"usage": ".ping", "desc": "Measure cloud server response latency in milliseconds.", "example": ".ping"},
     "song": {"usage": ".song <query/link>", "desc": "Search and download high-bitrate MP3 audio with tags.", "example": ".song Kesariya"},
-    "trim": {"usage": ".trim <start> <end> (reply)", "desc": "Fast lossless video/audio trimming by start & end timestamps.", "example": "Reply to video -> .trim 01:01 11:39"},
-    "save": {"usage": ".save (reply)", "desc": "Transfer any replied media, restricted text, or link to Saved Messages.", "example": "Reply to media -> .save"},
-    "spymode": {"usage": ".spymode on | off", "desc": "Automatically capture and store View-Once / Self-destruct media secretly.", "example": ".spymode on"},
-    "pfp": {"usage": ".pfp (reply)", "desc": "Directly set replied image as your Telegram profile photo.", "example": "Reply to image -> .pfp"},
-    "ytdl": {"usage": ".ytdl <link>", "desc": "Download direct video file from YouTube, Shorts, or Reels link.", "example": ".ytdl https://youtu.be/..."},
-    "tts": {"usage": ".tts <text/reply>", "desc": "Convert written text into a playable voice message note.", "example": ".tts Hello bhai kaise ho"},
-    "afk": {"usage": ".afk <reason>", "desc": "Set dynamic AFK status. Auto-logs all mentions and DMs while you're away.", "example": ".afk Busy studying"},
-    "clone": {"usage": ".clone <user/reply>", "desc": "Completely clone target user's Name, Bio, PFP, and stealth username.", "example": ".clone @target"},
-    "revert": {"usage": ".revert", "desc": "Restore your original profile identity (Name, Bio, Username, PFP).", "example": ".revert"},
-    "ghost": {"usage": ".ghost <seconds> <text>", "desc": "Send a message that self-destructs after specified seconds.", "example": ".ghost 5 Secret message"},
-    "antitag": {"usage": ".antitag <user/reply>", "desc": "Auto-deletes any incoming message from target if they mention/reply to you.", "example": ".antitag @spammer"},
-    "unantitag": {"usage": ".unantitag <user/reply>", "desc": "Remove anti-tag deletion rule from target user.", "example": ".unantitag @spammer"},
-    "tagall": {"usage": ".tagall <message>", "desc": "Tag all members in the current group with custom text.", "example": ".tagall Important meeting!"},
-    "cancel": {"usage": ".cancel", "desc": "Stop ongoing active .tagall loop immediately.", "example": ".cancel"},
-    "spam": {"usage": ".spam <count> <delay> <text>", "desc": "Send loop messages with controlled delay (max 20).", "example": ".spam 5 1 Hello"},
-    "promote": {"usage": ".promote <1-3> (reply)", "desc": "Promote replied member to Admin with tiered permissions (1=Basic, 3=Full).", "example": "Reply -> .promote 2"},
-    "demote": {"usage": ".demote (reply/user)", "desc": "Revoke admin rights of replied user back to normal member.", "example": "Reply -> .demote"},
-    "ban": {"usage": ".ban <id/reply> <reason>", "desc": "Ban user permanently from group with logged reason.", "example": ".ban @spammer Raid"},
-    "unban": {"usage": ".unban <id>", "desc": "Remove ban restriction from specified user ID/username.", "example": ".unban 12345678"},
-    "lock": {"usage": ".lock <id/reply>", "desc": "Continuously delete every message sent by target user in chat.", "example": ".lock @annoying"},
-    "unlock": {"usage": ".unlock <id/reply>", "desc": "Remove continuous auto-delete lock from target user.", "example": ".unlock @annoying"},
-    "gclock": {"usage": ".gclock", "desc": "Full lockdown: Restrict all group members from sending messages.", "example": ".gclock"},
-    "gcunlock": {"usage": ".gcunlock", "desc": "Release group lockdown: Allow members to talk again.", "example": ".gcunlock"},
-    "taglock": {"usage": ".taglock <msg_link>", "desc": "Auto-delete any user replying to target message thread.", "example": ".taglock https://t.me/c/.../10"},
-    "untaglock": {"usage": ".untaglock", "desc": "Lift reply restrictions on the locked thread.", "example": ".untaglock"},
-    "del": {"usage": ".del (reply)", "desc": "Instantly delete replied message.", "example": "Reply -> .del"},
-    "delall": {"usage": ".delall (reply)", "desc": "Purge all recent messages sent by replied user in current group.", "example": "Reply -> .delall"},
-    "purgeme": {"usage": ".purgeme", "desc": "Purge all your own messages sent in the current chat.", "example": ".purgeme"},
-    "purge": {"usage": ".purge (reply)", "desc": "Batch purge all messages from replied message till current.", "example": "Reply -> .purge"},
-    "info": {"usage": ".info <user/reply>", "desc": "Extract user intel, DC info, registration estimate and usernames.", "example": ".info @username"},
-    "type": {"usage": ".type <text>", "desc": "Animate typewriter effect in message letter-by-letter.", "example": ".type System online."},
-    "tr": {"usage": ".tr <text/reply>", "desc": "Translate target message into Hindi instantly.", "example": ".tr How are you?"},
-    "calc": {"usage": ".calc <math>", "desc": "Safe mathematical calculation evaluator.", "example": ".calc 45*120/(3+7)"},
-    "eval": {"usage": ".eval <code>", "desc": "Execute Python expression asynchronously on the fly.", "example": ".eval 2**10"}
+    "trim": {"usage": ".trim <start> <end> (reply)", "desc": "Fast lossless video/audio trimming by timestamps.", "example": "Reply -> .trim 01:01 11:39"},
+    "save": {"usage": ".save (reply)", "desc": "Transfer replied media/text directly to Saved Messages.", "example": "Reply -> .save"},
+    "spymode": {"usage": ".spymode on | off", "desc": "Capture and store View-Once media secretly to Saved Messages.", "example": ".spymode on"},
+    "pfp": {"usage": ".pfp (reply)", "desc": "Directly set replied image as your profile photo.", "example": "Reply -> .pfp"},
+    "ytdl": {"usage": ".ytdl <link>", "desc": "Download direct video from YouTube, Shorts, Reels link.", "example": ".ytdl https://youtu.be/..."},
+    "tts": {"usage": ".tts <text/reply>", "desc": "Convert text into a playable voice message note.", "example": ".tts Hello bhai"},
+    "afk": {"usage": ".afk <reason>", "desc": "Set dynamic AFK status with mention & DM logging.", "example": ".afk Out for dinner"},
+    "ghost": {"usage": ".ghost <sec> <text>", "desc": "Self-destruct message supporting decimals (e.g. 0.5s).", "example": ".ghost 0.5 Poof!"},
+    "gban": {"usage": ".gban <user/reply>", "desc": "Global Ban: Ban target user across all groups where you are admin.", "example": ".gban @spammer"},
+    "gmute": {"usage": ".gmute <user/reply>", "desc": "Global Mute: Mute target user across all your groups.", "example": ".gmute @spammer"},
+    "gpin": {"usage": ".gpin (reply)", "desc": "Global Pin: Forward & pin replied message across all your groups.", "example": "Reply -> .gpin"},
+    "clone": {"usage": ".clone <user/reply>", "desc": "Clone target user's Name, Bio, and PFP.", "example": ".clone @target"},
+    "revert": {"usage": ".revert", "desc": "Restore your original profile identity.", "example": ".revert"},
+    "info": {"usage": ".info <user/reply>", "desc": "User intel with logged past name/username changes.", "example": ".info @user"},
+    "purge": {"usage": ".purge (reply)", "desc": "Batch purge all messages from replied message till latest.", "example": "Reply -> .purge"}
 }
 
 def setup(client):
+
+    # --- Live Name & Username History Tracker ---
+    @client.on(events.NewMessage())
+    async def history_logger(event):
+        try:
+            sender = await event.get_sender()
+            if not isinstance(sender, User):
+                return
+            uid = sender.id
+            curr_name = f"{sender.first_name or ''} {sender.last_name or ''}".strip()
+            curr_uname = f"@{sender.username}" if sender.username else None
+
+            if uid not in USER_NAME_HISTORY:
+                USER_NAME_HISTORY[uid] = []
+            if curr_name and curr_name not in USER_NAME_HISTORY[uid]:
+                USER_NAME_HISTORY[uid].append(curr_name)
+
+            if uid not in USER_UNAME_HISTORY:
+                USER_UNAME_HISTORY[uid] = []
+            if curr_uname and curr_uname not in USER_UNAME_HISTORY[uid]:
+                USER_UNAME_HISTORY[uid].append(curr_uname)
+        except Exception:
+            pass
+
+    # --- .info <user/reply> with History ---
+    @client.on(events.NewMessage(outgoing=True, pattern=r'^\.info(?:\s+(.+))?'))
+    async def user_info(event):
+        reply = await event.get_reply_message()
+        user_arg = event.pattern_match.group(1)
+        user = None
+
+        if reply:
+            user = await reply.get_sender()
+        elif user_arg:
+            try:
+                user = await client.get_entity(int(user_arg) if user_arg.isdigit() else user_arg)
+            except Exception as e:
+                await event.edit(f"```text\n[!] User not found: {e}\n```")
+                return
+        else:
+            user = await event.get_sender()
+
+        if not user:
+            await event.edit("```text\n[!] Unable to fetch entity.\n```")
+            return
+
+        uid = user.id
+        first_name = user.first_name or "N/A"
+        last_name = user.last_name or ""
+        full_name = f"{first_name} {last_name}".strip()
+        username = f"@{user.username}" if getattr(user, 'username', None) else "None"
+        dc_id = getattr(user.photo, 'dc_id', 'Unknown') if getattr(user, 'photo', None) else "No PFP"
+        is_bot = "Yes 🤖" if getattr(user, 'bot', False) else "No 👤"
+        is_scam = "YES ⚠️" if getattr(user, 'scam', False) else "Clean 🛡️"
+
+        names = USER_NAME_HISTORY.get(uid, [full_name])
+        unames = USER_UNAME_HISTORY.get(uid, [username])
+
+        name_hist_str = " ➔ ".join(names[-3:]) if names else full_name
+        uname_hist_str = " ➔ ".join(unames[-3:]) if unames else username
+
+        card = (
+            "```text\n"
+            "╔════════「 🕵️ 𝗨𝗦𝗘𝗥 𝗜𝗡𝗧𝗘𝗟 𝗥𝗘𝗣𝗢𝗥𝗧 」════════╗\n"
+            "║\n"
+            f"╠─ 🆔 𝗨𝗦𝗘𝗥 𝗜𝗗    :: {uid}\n"
+            f"╠─ 👤 𝗙𝗨𝗟𝗟 𝗡𝗔𝗠𝗘  :: {full_name}\n"
+            f"╠─ 🏷️ 𝗨𝗦𝗘𝗥𝗡𝗔𝗠𝗘  :: {username}\n"
+            f"╠─ 🛰️ 𝗗𝗖 𝗜𝗗      :: {dc_id}\n"
+            f"╠─ 🤖 𝗜𝗦 𝗕𝗢𝗧     :: {is_bot}\n"
+            f"╠─ 🚨 𝗦𝗖𝗔𝗠/𝗙𝗔𝗞𝗘  :: {is_scam}\n"
+            "║\n"
+            "╠══「 📜 𝗥𝗘𝗖𝗢𝗥𝗗𝗘𝗗 𝗛𝗜𝗦𝗧𝗢𝗥𝗬 」══\n"
+            f"╠─ 📝 𝗡𝗔𝗠𝗘𝗦     :: {name_hist_str}\n"
+            f"╠─ 🔖 𝗨𝗦𝗘𝗥𝗡𝗔𝗠𝗘𝗦 :: {uname_hist_str}\n"
+            "║\n"
+            "╚══════════════════════════════════════════╝\n"
+            "```"
+        )
+        await event.edit(card)
 
     @client.on(events.NewMessage(outgoing=True, pattern=r'^\.ping$'))
     async def ping(event):
@@ -117,7 +183,7 @@ def setup(client):
             "╠══「 🕵️ 𝗦𝗧𝗘𝗔𝗟𝗧𝗛 & 𝗜𝗗𝗘𝗡𝗧𝗜𝗧𝗬 」══\n"
             "╠─ 04. .clone <user>   :: Spoof full target identity\n"
             "╠─ 05. .revert         :: Restore 100% original profile\n"
-            "╠─ 06. .ghost <sec>    :: Timed self-destruct message\n"
+            "╠─ 06. .ghost <s/ms>   :: Timed self-destruct (0.5s ok)\n"
             "╠─ 07. .antitag <user> :: Auto-delete target's mentions\n"
             "╠─ 08. .unantitag <u>  :: Remove target anti-tag lock\n"
             "║\n"
@@ -137,29 +203,32 @@ def setup(client):
             "╠─ 19. .spam <c> <d>   :: Controlled flood loop\n"
             "║\n"
             "╠══「 🛡️ 𝗖𝗛𝗔𝗧 & 𝗔𝗗𝗠𝗜𝗡 𝗦𝗘𝗖𝗨𝗥𝗜𝗧𝗬 」══\n"
-            "╠─ 20. .promote <1-3>  :: Member promotion (3 tiers)\n"
-            "╠─ 21. .demote <user>  :: Revoke admin rights\n"
-            "╠─ 22. .ban <id/rep>   :: Ban entity with reason\n"
-            "╠─ 23. .unban <id>     :: Revoke ban restriction\n"
-            "╠─ 24. .lock <id/rep>  :: Continuous wipe of user's msgs\n"
-            "╠─ 25. .unlock <id>    :: Release user deletion lock\n"
-            "╠─ 26. .gclock         :: Total group shutdown\n"
-            "╠─ 27. .gcunlock       :: Lift group shutdown\n"
-            "╠─ 28. .taglock <url>  :: Block replies to target message\n"
-            "╠─ 29. .untaglock      :: Release locked thread replies\n"
+            "╠─ 20. .gban <user>    :: Global Ban across all your chats\n"
+            "╠─ 21. .gmute <user>   :: Global Mute across all your chats\n"
+            "╠─ 22. .gpin           :: Global Pin replied msg everywhere\n"
+            "╠─ 23. .promote <1-3>  :: Member promotion (3 tiers)\n"
+            "╠─ 24. .demote <user>  :: Revoke admin rights\n"
+            "╠─ 25. .ban <id/rep>   :: Ban entity with reason\n"
+            "╠─ 26. .unban <id>     :: Revoke ban restriction\n"
+            "╠─ 27. .lock <id/rep>  :: Continuous wipe of user's msgs\n"
+            "╠─ 28. .unlock <id>    :: Release user deletion lock\n"
+            "╠─ 29. .gclock         :: Total group shutdown\n"
+            "╠─ 30. .gcunlock       :: Lift group shutdown\n"
+            "╠─ 31. .taglock <url>  :: Block replies to target message\n"
+            "╠─ 32. .untaglock      :: Release locked thread replies\n"
             "║\n"
             "╠══「 🧹 𝗣𝗨𝗥𝗚𝗘 & 𝗖𝗟𝗘𝗔𝗡𝗨𝗣 」══\n"
-            "╠─ 30. .del            :: Instant delete replied message\n"
-            "╠─ 31. .delall         :: Purge all messages from user\n"
-            "╠─ 32. .purgeme        :: Purge own chat history\n"
-            "╠─ 33. .purge          :: Batch purge from replied msg\n"
+            "╠─ 33. .del            :: Instant delete replied message\n"
+            "╠─ 34. .delall         :: Purge all messages from user\n"
+            "╠─ 35. .purgeme        :: Purge own chat history\n"
+            "╠─ 36. .purge          :: Batch purge from replied msg\n"
             "║\n"
             "╠══「 🛠️ 𝗨𝗧𝗜𝗟𝗜𝗧𝗜𝗘𝗦 & 𝗖𝗢𝗗𝗘 」══\n"
-            "╠─ 34. .info <user>    :: Intel extraction & history\n"
-            "╠─ 35. .type <text>    :: Typewriter terminal animation\n"
-            "╠─ 36. .tr <text>      :: Instant Hindi translation\n"
-            "╠─ 37. .calc <math>    :: Compute math expressions\n"
-            "╠─ 38. .eval <code>    :: Execute asynchronous Python\n"
+            "╠─ 37. .info <user>    :: Intel extraction & live history\n"
+            "╠─ 38. .type <text>    :: Typewriter terminal animation\n"
+            "╠─ 39. .tr <text>      :: Instant Hindi translation\n"
+            "╠─ 40. .calc <math>    :: Compute math expressions\n"
+            "╠─ 41. .eval <code>    :: Execute asynchronous Python\n"
             "║\n"
             "╚═════════════「 ⚡ 𝗖𝗬𝗕𝗘𝗥-𝗘𝗫𝗘𝗖 ⚡ 」═════════════╝\n"
             "```"
@@ -175,15 +244,7 @@ def setup(client):
                 await event.edit("```text\n[!] ERROR: Invalid math syntax\n```")
                 return
             result = eval(expr)
-            reply_text = (
-                "```text\n"
-                "┌───「 🧮 𝗠𝗔𝗧𝗛 𝗖𝗢𝗥𝗘 」\n"
-                f"├─ 𝗜𝗡𝗣𝗨𝗧  :: {expr}\n"
-                f"├─ 𝗢𝗨𝗧𝗣𝗨𝗧 :: {result}\n"
-                "└───「 ⚡ 𝗖𝗢𝗠𝗣𝗨𝗧𝗘𝗗 」\n"
-                "```"
-            )
-            await event.edit(reply_text)
+            await event.edit(f"```text\n┌───「 🧮 𝗠𝗔𝗧𝗛 𝗖𝗢𝗥𝗘 」\n├─ 𝗜𝗡𝗣𝗨𝗧  :: {expr}\n├─ 𝗢𝗨𝗧𝗣𝗨𝗧 :: {result}\n└───「 ⚡ 𝗖𝗢𝗠𝗣𝗨𝗧𝗘𝗗 」\n```")
         except Exception as e:
             await event.edit(f"```text\n[!] EXCEPTION: {e}\n```")
 
@@ -193,14 +254,11 @@ def setup(client):
         if not reply:
             await event.edit("```text\n[!] Reply to a message to purge from!\n```")
             return
-        
         chat = await event.get_input_chat()
         from_id = reply.id
         total_deleted = 0
         batch = []
-
         await event.delete()
-
         async for msg in client.iter_messages(chat, min_id=from_id - 1, reverse=True):
             batch.append(msg.id)
             if len(batch) >= 100:
@@ -208,17 +266,9 @@ def setup(client):
                 total_deleted += len(batch)
                 batch = []
                 await asyncio.sleep(0.3)
-
         if batch:
             await client.delete_messages(chat, batch)
             total_deleted += len(batch)
-
-        notice = await client.send_message(
-            chat,
-            "```text\n"
-            "┌───「 🧹 𝗧𝗢𝗧𝗔𝗟 𝗣𝗨𝗥𝗚𝗘 𝗖𝗢𝗠𝗣𝗟𝗘𝗧𝗘 」\n"
-            f"└─ 🗑️ Cleaned :: {total_deleted} messages\n"
-            "```"
-        )
+        notice = await client.send_message(chat, f"```text\n┌───「 🧹 𝗧𝗢𝗧𝗔𝗟 𝗣𝗨𝗥𝗚𝗘 𝗖𝗢𝗠𝗣𝗟𝗘𝗧𝗘 」\n└─ 🗑️ Cleaned :: {total_deleted} messages\n```")
         await asyncio.sleep(2)
         await notice.delete()
