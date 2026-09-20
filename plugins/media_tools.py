@@ -2,10 +2,8 @@ import os
 import asyncio
 import subprocess
 import urllib.parse
-import urllib.request
 import static_ffmpeg
 import yt_dlp
-import requests
 from telethon import events
 from telethon.tl.functions.photos import UploadProfilePhotoRequest
 from telethon.tl.types import DocumentAttributeAudio
@@ -26,7 +24,7 @@ def parse_time_to_seconds(time_str):
 
 def setup(client):
 
-    # --- .ytdl <link> ---
+    # --- .ytdl <link> (Multi-Gateway Engine) ---
     @client.on(events.NewMessage(outgoing=True, pattern=r'^\.ytdl(?:\s+(.+))?'))
     async def download_video(event):
         url = event.pattern_match.group(1)
@@ -34,43 +32,23 @@ def setup(client):
             await event.edit("```text\n[!] Usage: .ytdl <video link>\n```")
             return
 
-        status = await event.edit("```text\n┌───「 ⚡ 𝗙𝗘𝗧𝗖𝗛𝗜𝗡𝗚 𝗠𝗘𝗗𝗜𝗔... 」\n└───「 🛰️ Bypassing server restrictions 」\n```")
-        loop = asyncio.get_event_loop()
-        stream_url = None
+        status = await event.edit("```text\n┌───「 ⚡ 𝗙𝗘𝗧𝗖𝗛𝗜𝗡𝗚 𝗠𝗘𝗗𝗜𝗔... 」\n└───「 🛰️ Engaging download tunnel 」\n```")
 
-        # Primary & Secondary API Routers to extract direct MP4 without cloud IP ban
-        def fetch_api_stream():
-            routers = [
-                f"https://api.vkrdownloader.com/server?vkr={urllib.parse.quote(url)}",
-                f"https://api.onlinevideoconverter.pro/api/convert?url={urllib.parse.quote(url)}"
-            ]
-            for r_url in routers:
-                try:
-                    res = requests.get(r_url, timeout=10).json()
-                    # Check common json keys
-                    if "data" in res and "url" in res["data"]:
-                        return res["data"]["url"]
-                    if "url" in res:
-                        return res["url"]
-                    if "download_url" in res:
-                        return res["download_url"]
-                except Exception:
-                    continue
-            return None
+        # Gateway 1: Using Background Bot Tunnel (Bypasses all Datacenter/Render IP blocks)
+        try:
+            async with client.conversation("@YtbDownBot", timeout=12) as conv:
+                await conv.send_message(url)
+                bot_msg = await conv.get_response()
+                if bot_msg.media:
+                    chat = await event.get_input_chat()
+                    await client.send_file(chat, bot_msg.media, caption="🎬 **Downloaded Video**")
+                    await conv.mark_read()
+                    await status.delete()
+                    return
+        except Exception:
+            pass
 
-        stream_url = await loop.run_in_executor(None, fetch_api_stream)
-
-        if stream_url:
-            try:
-                await status.edit("```text\n┌───「 📤 𝗨𝗣𝗟𝗢𝗔𝗗𝗜𝗡𝗚... 」\n└───「 ⚡ Sending video stream 」\n```")
-                chat = await event.get_input_chat()
-                await client.send_file(chat, stream_url, caption="🎬 **Downloaded Video**")
-                await status.delete()
-                return
-            except Exception:
-                pass
-
-        # Fallback to local yt-dlp with mobile headers
+        # Gateway 2: Direct yt-dlp Mobile Extraction (Works for Reels, TikTok, Twitter, Shorts)
         out_template = f"video_{event.id}.mp4"
         ydl_opts = {
             'format': 'best[ext=mp4]/best',
@@ -81,22 +59,23 @@ def setup(client):
             'user_agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_5 like Mac OS X) AppleWebKit/605.1.15'
         }
 
-        def run_fallback():
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                ydl.download([url])
-            return out_template
-
+        loop = asyncio.get_event_loop()
         try:
-            fn = await loop.run_in_executor(None, run_fallback)
+            def extract():
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    ydl.download([url])
+                return out_template
+
+            fn = await loop.run_in_executor(None, extract)
             if os.path.exists(fn):
-                await status.edit("```text\n┌───「 📤 𝗨𝗣𝗟𝗢𝗔𝗗𝗜𝗡𝗚... 」\n└───「 ⚡ Sending downloaded file 」\n```")
+                await status.edit("```text\n┌───「 📤 𝗨𝗣𝗟𝗢𝗔𝗗𝗜𝗡𝗚... 」\n└───「 ⚡ Sending file 」\n```")
                 chat = await event.get_input_chat()
                 await client.send_file(chat, fn, caption="🎬 **Downloaded Video**", supports_streaming=True)
                 os.remove(fn)
                 await status.delete()
                 return
         except Exception as e:
-            await status.edit(f"```text\n[!] Extraction failed: Cloud IP rate-limited.\nError: {e}\n```")
+            await status.edit(f"```text\n[!] Video Extraction Failed: {e}\nTip: Instagram Reels & Shorts work seamlessly.\n```")
 
     # --- .song <name> ---
     @client.on(events.NewMessage(outgoing=True, pattern=r'^\.song(?:\s+(.+))?'))
@@ -302,6 +281,7 @@ def setup(client):
         try:
             encoded_text = urllib.parse.quote(text[:200])
             url = f"https://translate.google.com/translate_tts?ie=UTF-8&q={encoded_text}&tl=hi&client=tw-ob"
+            import urllib.request
             req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
             loop = asyncio.get_event_loop()
             def fetch_audio():
