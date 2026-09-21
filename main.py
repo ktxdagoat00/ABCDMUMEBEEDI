@@ -4,10 +4,11 @@ import glob
 import asyncio
 import logging
 import importlib.util
-from telethon import TelegramClient, events
+from telethon import TelegramClient
+from telethon.sessions import StringSession
 from aiohttp import web
 
-# Performance logging (Suppress spammy logs)
+# Performance logging
 logging.basicConfig(level=logging.WARNING)
 
 API_ID = int(os.environ.get("API_ID", 0))
@@ -18,10 +19,8 @@ if not API_ID or not API_HASH or not SESSION_STRING:
     print("[FATAL] Environment variables missing!")
     sys.exit(1)
 
-from telethon.sessions import StringSession
 client = TelegramClient(StringSession(SESSION_STRING), API_ID, API_HASH)
 
-# Dynamic Plugin Loader
 def load_plugins():
     plugin_files = glob.glob("plugins/*.py")
     for file_path in plugin_files:
@@ -38,7 +37,6 @@ def load_plugins():
         except Exception as e:
             print(f"[-] Error loading plugin {name}: {e}")
 
-# Fake Web Server for Render 24/7 Keep-Alive
 async def health_check(request):
     return web.Response(text="Bot Engine Running 24/7 at Peak Speed!")
 
@@ -70,5 +68,4 @@ async def main():
             await asyncio.sleep(5)
 
 if __name__ == "__main__":
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(main())
+    asyncio.run(main())
