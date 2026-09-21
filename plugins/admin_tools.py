@@ -27,40 +27,28 @@ def setup(client):
 
         status = await event.edit(f"```text\n┌───「 🚨 𝗚𝗟𝗢𝗕𝗔𝗟 𝗕𝗔𝗡 𝗜𝗡𝗜𝗧𝗜𝗔𝗧𝗘𝗗 」\n└─ 🎯 Target: {target.id}\n```")
         
-        total_scanned = 0
-        success_chats = []
-        failed_chats = []
-
+        banned_count = 0
+        failed_count = 0
         ban_rights = ChatBannedRights(until_date=None, view_messages=True, send_messages=True)
 
         async for dialog in client.iter_dialogs():
             if dialog.is_group or dialog.is_channel:
-                total_scanned += 1
-                cname = dialog.name[:18]
                 try:
                     await client(EditBannedRequest(dialog.id, target.id, ban_rights))
-                    success_chats.append(cname)
+                    banned_count += 1
                     await asyncio.sleep(0.08)
                 except Exception:
-                    failed_chats.append(cname)
-
-        success_log = "\n".join([f"╠─  • {name}" for name in success_chats[:6]]) or "╠─  None"
-        if len(success_chats) > 6:
-            success_log += f"\n╠─  ...and {len(success_chats) - 6} more"
+                    failed_count += 1
 
         card = (
             "```text\n"
-            "╔════「 ⚡ 𝗚𝗟𝗢𝗕𝗔𝗟 𝗕𝗔𝗡 𝗔𝗨𝗗𝗜𝗧 ⚡ 」════╗\n"
+            "╔════「 ⚡ 𝗚𝗟𝗢𝗕𝗔𝗟 𝗕𝗔𝗡 𝗖𝗢𝗠𝗣𝗟𝗘𝗧𝗘𝗗 」════╗\n"
             "║\n"
-            f"╠─ 🎯 𝗧𝗔𝗥𝗚𝗘𝗧    :: {getattr(target, 'first_name', 'User')} ({target.id})\n"
-            f"╠─ 🌐 𝗧𝗢𝗧𝗔𝗟 𝗚𝗖𝗦  :: {total_scanned} groups scanned\n"
-            f"╠─ 🔨 𝗕𝗔𝗡𝗡𝗘𝗗     :: {len(success_chats)} chats\n"
-            f"╠─ 🛡️ 𝗙𝗔𝗜𝗟𝗘𝗗     :: {len(failed_chats)} (No Ban Rights)\n"
+            f"╠─ 🎯 𝗧𝗔𝗥𝗚𝗘𝗧 :: {getattr(target, 'first_name', 'User')} ({target.id})\n"
+            f"╠─ 🔨 𝗕𝗔𝗡𝗡𝗘𝗗 :: {banned_count} groups\n"
+            f"╠─ 🛡️ 𝗦𝗞𝗜𝗣    :: {failed_count} groups (No Rights)\n"
             "║\n"
-            "╠══「 📋 𝗦𝗨𝗖𝗖𝗘𝗦𝗦 𝗖𝗛𝗔𝗧𝗦 」══\n"
-            f"{success_log}\n"
-            "║\n"
-            "╚════════════════════════════════════╝\n"
+            "╚══════════════════════════════════════╝\n"
             "```"
         )
         await status.edit(card)
@@ -86,40 +74,28 @@ def setup(client):
 
         status = await event.edit(f"```text\n┌───「 🕊️ 𝗚𝗟𝗢𝗕𝗔𝗟 𝗨𝗡𝗕𝗔𝗡 𝗜𝗡𝗜𝗧𝗜𝗔𝗧𝗘𝗗 」\n└─ 🎯 Target: {target.id}\n```")
         
-        total_scanned = 0
-        success_chats = []
-        failed_chats = []
-
+        unbanned_count = 0
+        failed_count = 0
         unban_rights = ChatBannedRights(until_date=None, view_messages=False, send_messages=False)
 
         async for dialog in client.iter_dialogs():
             if dialog.is_group or dialog.is_channel:
-                total_scanned += 1
-                cname = dialog.name[:18]
                 try:
                     await client(EditBannedRequest(dialog.id, target.id, unban_rights))
-                    success_chats.append(cname)
+                    unbanned_count += 1
                     await asyncio.sleep(0.08)
                 except Exception:
-                    failed_chats.append(cname)
-
-        success_log = "\n".join([f"╠─  • {name}" for name in success_chats[:6]]) or "╠─  None"
-        if len(success_chats) > 6:
-            success_log += f"\n╠─  ...and {len(success_chats) - 6} more"
+                    failed_count += 1
 
         card = (
             "```text\n"
-            "╔════「 ⚡ 𝗚𝗟𝗢𝗕𝗔𝗟 𝗨𝗡𝗕𝗔𝗡 𝗔𝗨𝗗𝗜𝗧 ⚡ 」════╗\n"
+            "╔════「 ⚡ 𝗚𝗟𝗢𝗕𝗔𝗟 𝗨𝗡𝗕𝗔𝗡 𝗖𝗢𝗠𝗣𝗟𝗘𝗧𝗘𝗗 」════╗\n"
             "║\n"
-            f"╠─ 🎯 𝗧𝗔𝗥𝗚𝗘𝗧    :: {getattr(target, 'first_name', 'User')} ({target.id})\n"
-            f"╠─ 🌐 𝗧𝗢𝗧𝗔𝗟 𝗚𝗖𝗦  :: {total_scanned} groups scanned\n"
-            f"╠─ 🕊️ 𝗨𝗡𝗕𝗔𝗡𝗡𝗘𝗗   :: {len(success_chats)} chats\n"
-            f"╠─ 🛡️ 𝗙𝗔𝗜𝗟𝗘𝗗     :: {len(failed_chats)} (No Admin Rights)\n"
+            f"╠─ 🎯 𝗧𝗔𝗥𝗚𝗘𝗧 :: {getattr(target, 'first_name', 'User')} ({target.id})\n"
+            f"╠─ 🕊️ 𝗨𝗡𝗕𝗔𝗡   :: {unbanned_count} groups\n"
+            f"╠─ 🛡️ 𝗦𝗞𝗜𝗣    :: {failed_count} groups (No Rights)\n"
             "║\n"
-            "╠══「 📋 𝗦𝗨𝗖𝗖𝗘𝗦𝗦 𝗖𝗛𝗔𝗧𝗦 」══\n"
-            f"{success_log}\n"
-            "║\n"
-            "╚═════════════════════════════════════╝\n"
+            "╚═══════════════════════════════════════╝\n"
             "```"
         )
         await status.edit(card)
@@ -145,40 +121,28 @@ def setup(client):
 
         status = await event.edit(f"```text\n┌───「 🔇 𝗚𝗟𝗢𝗕𝗔𝗟 𝗠𝗨𝗧𝗘 𝗜𝗡𝗜𝗧𝗜𝗔𝗧𝗘𝗗 」\n└─ 🎯 Target: {target.id}\n```")
         
-        total_scanned = 0
-        success_chats = []
-        failed_chats = []
-
+        muted_count = 0
+        failed_count = 0
         mute_rights = ChatBannedRights(until_date=None, send_messages=True, send_media=True, send_stickers=True, send_gifs=True)
 
         async for dialog in client.iter_dialogs():
             if dialog.is_group or dialog.is_channel:
-                total_scanned += 1
-                cname = dialog.name[:18]
                 try:
                     await client(EditBannedRequest(dialog.id, target.id, mute_rights))
-                    success_chats.append(cname)
+                    muted_count += 1
                     await asyncio.sleep(0.08)
                 except Exception:
-                    failed_chats.append(cname)
-
-        success_log = "\n".join([f"╠─  • {name}" for name in success_chats[:6]]) or "╠─  None"
-        if len(success_chats) > 6:
-            success_log += f"\n╠─  ...and {len(success_chats) - 6} more"
+                    failed_count += 1
 
         card = (
             "```text\n"
-            "╔════「 ⚡ 𝗚𝗟𝗢𝗕𝗔𝗟 𝗠𝗨𝗧𝗘 𝗔𝗨𝗗𝗜𝗧 ⚡ 」════╗\n"
+            "╔════「 ⚡ 𝗚𝗟𝗢𝗕𝗔𝗟 𝗠𝗨𝗧𝗘 𝗖𝗢𝗠𝗣𝗟𝗘𝗧𝗘𝗗 」════╗\n"
             "║\n"
-            f"╠─ 🎯 𝗧𝗔𝗥𝗚𝗘𝗧    :: {getattr(target, 'first_name', 'User')} ({target.id})\n"
-            f"╠─ 🌐 𝗧𝗢𝗧𝗔𝗟 𝗚𝗖𝗦  :: {total_scanned} groups scanned\n"
-            f"╠─ 🔇 𝗠𝗨𝗧𝗘𝗗      :: {len(success_chats)} chats\n"
-            f"╠─ 🛡️ 𝗙𝗔𝗜𝗟𝗘𝗗     :: {len(failed_chats)} (No Admin Rights)\n"
+            f"╠─ 🎯 𝗧𝗔𝗥𝗚𝗘𝗧 :: {getattr(target, 'first_name', 'User')} ({target.id})\n"
+            f"╠─ 🔇 𝗠𝗨𝗧𝗘𝗗   :: {muted_count} groups\n"
+            f"╠─ 🛡️ 𝗦𝗞𝗜𝗣    :: {failed_count} groups (No Rights)\n"
             "║\n"
-            "╠══「 📋 𝗦𝗨𝗖𝗖𝗘𝗦𝗦 𝗖𝗛𝗔𝗧𝗦 」══\n"
-            f"{success_log}\n"
-            "║\n"
-            "╚═════════════════════════════════════╝\n"
+            "╚══════════════════════════════════════╝\n"
             "```"
         )
         await status.edit(card)
@@ -204,40 +168,28 @@ def setup(client):
 
         status = await event.edit(f"```text\n┌───「 🔊 𝗚𝗟𝗢𝗕𝗔𝗟 𝗨𝗡𝗠𝗨𝗧𝗘 𝗜𝗡𝗜𝗧𝗜𝗔𝗧𝗘𝗗 」\n└─ 🎯 Target: {target.id}\n```")
         
-        total_scanned = 0
-        success_chats = []
-        failed_chats = []
-
+        unmuted_count = 0
+        failed_count = 0
         unmute_rights = ChatBannedRights(until_date=None, send_messages=False, send_media=False, send_stickers=False, send_gifs=False)
 
         async for dialog in client.iter_dialogs():
             if dialog.is_group or dialog.is_channel:
-                total_scanned += 1
-                cname = dialog.name[:18]
                 try:
                     await client(EditBannedRequest(dialog.id, target.id, unmute_rights))
-                    success_chats.append(cname)
+                    unmuted_count += 1
                     await asyncio.sleep(0.08)
                 except Exception:
-                    failed_chats.append(cname)
-
-        success_log = "\n".join([f"╠─  • {name}" for name in success_chats[:6]]) or "╠─  None"
-        if len(success_chats) > 6:
-            success_log += f"\n╠─  ...and {len(success_chats) - 6} more"
+                    failed_count += 1
 
         card = (
             "```text\n"
-            "╔════「 ⚡ 𝗚𝗟𝗢𝗕𝗔𝗟 𝗨𝗡𝗠𝗨𝗧𝗘 𝗔𝗨𝗗𝗜𝗧 ⚡ 」════╗\n"
+            "╔════「 ⚡ 𝗚𝗟𝗢𝗕𝗔𝗟 𝗨𝗡𝗠𝗨𝗧𝗘 𝗖𝗢𝗠𝗣𝗟𝗘𝗧𝗘𝗗 」════╗\n"
             "║\n"
-            f"╠─ 🎯 𝗧𝗔𝗥𝗚𝗘𝗧    :: {getattr(target, 'first_name', 'User')} ({target.id})\n"
-            f"╠─ 🌐 𝗧𝗢𝗧𝗔𝗟 𝗚𝗖𝗦  :: {total_scanned} groups scanned\n"
-            f"╠─ 🔊 𝗨𝗡𝗠𝗨𝗧𝗘𝗗    :: {len(success_chats)} chats\n"
-            f"╠─ 🛡️ 𝗙𝗔𝗜𝗟𝗘𝗗     :: {len(failed_chats)} (No Admin Rights)\n"
+            f"╠─ 🎯 𝗧𝗔𝗥𝗚𝗘𝗧 :: {getattr(target, 'first_name', 'User')} ({target.id})\n"
+            f"╠─ 🔊 𝗨𝗡𝗠𝗨𝗧𝗘 :: {unmuted_count} groups\n"
+            f"╠─ 🛡️ 𝗦𝗞𝗜𝗣    :: {failed_count} groups (No Rights)\n"
             "║\n"
-            "╠══「 📋 𝗦𝗨𝗖𝗖𝗘𝗦𝗦 𝗖𝗛𝗔𝗧𝗦 」══\n"
-            f"{success_log}\n"
-            "║\n"
-            "╚══════════════════════════════════════╝\n"
+            "╚════════════════════════════════════════╝\n"
             "```"
         )
         await status.edit(card)
@@ -252,38 +204,27 @@ def setup(client):
 
         status = await event.edit("```text\n┌───「 📌 𝗚𝗟𝗢𝗕𝗔𝗟 𝗣𝗜𝗡 𝗜𝗡𝗜𝗧𝗜𝗔𝗧𝗘𝗗... 」\n└───「 Broadcasting & Pinning 」\n```")
         
-        total_scanned = 0
-        success_chats = []
-        failed_chats = []
+        pinned_count = 0
+        failed_count = 0
 
         async for dialog in client.iter_dialogs():
             if dialog.is_group or dialog.is_channel:
-                total_scanned += 1
-                cname = dialog.name[:18]
                 try:
                     forwarded = await client.forward_messages(dialog.id, reply)
                     await client.pin_message(dialog.id, forwarded.id, notify=True)
-                    success_chats.append(cname)
-                    await asyncio.sleep(0.15)
+                    pinned_count += 1
+                    await asyncio.sleep(0.12)
                 except Exception:
-                    failed_chats.append(cname)
-
-        success_log = "\n".join([f"╠─  • {name}" for name in success_chats[:6]]) or "╠─  None"
-        if len(success_chats) > 6:
-            success_log += f"\n╠─  ...and {len(success_chats) - 6} more"
+                    failed_count += 1
 
         card = (
             "```text\n"
-            "╔════「 ⚡ 𝗚𝗟𝗢𝗕𝗔𝗟 𝗣𝗜𝗡 𝗔𝗨𝗗𝗜𝗧 ⚡ 」════╗\n"
+            "╔════「 ⚡ 𝗚𝗟𝗢𝗕𝗔𝗟 𝗣𝗜𝗡 𝗖𝗢𝗠𝗣𝗟𝗘𝗧𝗘𝗗 」════╗\n"
             "║\n"
-            f"╠─ 🌐 𝗧𝗢𝗧𝗔𝗟 𝗚𝗖𝗦  :: {total_scanned} groups scanned\n"
-            f"╠─ 📌 𝗣𝗜𝗡𝗡𝗘𝗗     :: {len(success_chats)} chats\n"
-            f"╠─ 🛡️ 𝗙𝗔𝗜𝗟𝗘𝗗     :: {len(failed_chats)} (No Pin Rights)\n"
+            f"╠─ 📌 𝗣𝗜𝗡𝗡𝗘𝗗 :: {pinned_count} groups\n"
+            f"╠─ 🛡️ 𝗦𝗞𝗜𝗣   :: {failed_count} groups (No Rights)\n"
             "║\n"
-            "╠══「 📋 𝗦𝗨𝗖𝗖𝗘𝗦𝗦 𝗖𝗛𝗔𝗧𝗦 」══\n"
-            f"{success_log}\n"
-            "║\n"
-            "╚════════════════════════════════════╝\n"
+            "╚═════════════════════════════════════╝\n"
             "```"
         )
         await status.edit(card)
@@ -293,37 +234,26 @@ def setup(client):
     async def global_unpin(event):
         status = await event.edit("```text\n┌───「 🔓 𝗚𝗟𝗢𝗕𝗔𝗟 𝗨𝗡𝗣𝗜𝗡 𝗜𝗡𝗜𝗧𝗜𝗔𝗧𝗘𝗗... 」\n└───「 Clearing pinned messages 」\n```")
         
-        total_scanned = 0
-        success_chats = []
-        failed_chats = []
+        unpinned_count = 0
+        failed_count = 0
 
         async for dialog in client.iter_dialogs():
             if dialog.is_group or dialog.is_channel:
-                total_scanned += 1
-                cname = dialog.name[:18]
                 try:
                     await client(UnpinAllMessagesRequest(dialog.id))
-                    success_chats.append(cname)
-                    await asyncio.sleep(0.1)
+                    unpinned_count += 1
+                    await asyncio.sleep(0.08)
                 except Exception:
-                    failed_chats.append(cname)
-
-        success_log = "\n".join([f"╠─  • {name}" for name in success_chats[:6]]) or "╠─  None"
-        if len(success_chats) > 6:
-            success_log += f"\n╠─  ...and {len(success_chats) - 6} more"
+                    failed_count += 1
 
         card = (
             "```text\n"
-            "╔════「 ⚡ 𝗚𝗟𝗢𝗕𝗔𝗟 𝗨𝗡𝗣𝗜𝗡 𝗔𝗨𝗗𝗜𝗧 ⚡ 」════╗\n"
+            "╔════「 ⚡ 𝗚𝗟𝗢𝗕𝗔𝗟 𝗨𝗡𝗣𝗜𝗡 𝗖𝗢𝗠𝗣𝗟𝗘𝗧𝗘𝗗 」════╗\n"
             "║\n"
-            f"╠─ 🌐 𝗧𝗢𝗧𝗔𝗟 𝗚𝗖𝗦  :: {total_scanned} groups scanned\n"
-            f"╠─ 🔓 𝗨𝗡𝗣𝗜𝗡𝗡𝗘𝗗   :: {len(success_chats)} chats\n"
-            f"╠─ 🛡️ 𝗙𝗔𝗜𝗟𝗘𝗗     :: {len(failed_chats)} (No Admin Rights)\n"
+            f"╠─ 🔓 𝗨𝗡𝗣𝗜𝗡𝗡𝗘𝗗 :: {unpinned_count} groups\n"
+            f"╠─ 🛡️ 𝗦𝗞𝗜𝗣     :: {failed_count} groups (No Rights)\n"
             "║\n"
-            "╠══「 📋 𝗦𝗨𝗖𝗖𝗘𝗦𝗦 𝗖𝗛𝗔𝗧𝗦 」══\n"
-            f"{success_log}\n"
-            "║\n"
-            "╚══════════════════════════════════════╝\n"
+            "╚═══════════════════════════════════════╝\n"
             "```"
         )
         await status.edit(card)

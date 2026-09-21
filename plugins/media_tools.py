@@ -2,6 +2,7 @@ import os
 import asyncio
 import subprocess
 import urllib.parse
+import urllib.request
 import static_ffmpeg
 import yt_dlp
 from telethon import events
@@ -23,6 +24,54 @@ def parse_time_to_seconds(time_str):
     return 0
 
 def setup(client):
+
+    # --- .tts <text/reply> ---
+    @client.on(events.NewMessage(outgoing=True, pattern=r'^\.tts(?:\s+(.+))?'))
+    async def text_to_speech(event):
+        arg = event.pattern_match.group(1)
+        reply = await event.get_reply_message()
+        text = arg if arg else (reply.raw_text if reply else "")
+
+        if not text:
+            await event.edit("```text\n[!] Provide text or reply to a message: .tts <text>\n```")
+            return
+
+        status = await event.edit("```text\n┌───「 🎙️ 𝗚𝗘𝗡𝗘𝗥𝗔𝗧𝗜𝗡𝗚 𝗔𝗨𝗗𝗜𝗢... 」\n└───「 ⚡ Converting text to voice note 」\n```")
+        out_file = f"tts_{event.id}.mp3"
+
+        def fetch_tts():
+            encoded = urllib.parse.quote(text[:250])
+            url = f"https://api.streamelements.com/kappa/v2/speech?voice=Aditi&text={encoded}"
+            req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'})
+            with urllib.request.urlopen(req, timeout=10) as resp, open(out_file, 'wb') as f:
+                f.write(resp.read())
+
+        loop = asyncio.get_event_loop()
+        try:
+            await loop.run_in_executor(None, fetch_tts)
+            chat = await event.get_input_chat()
+            await client.send_file(chat, out_file, voice_note=True)
+            if os.path.exists(out_file):
+                os.remove(out_file)
+            await status.delete()
+        except Exception as e:
+            # Fallback to Google Translate TTS
+            try:
+                def fetch_fallback():
+                    encoded = urllib.parse.quote(text[:200])
+                    url = f"https://translate.google.com/translate_tts?ie=UTF-8&q={encoded}&tl=hi&client=tw-ob"
+                    req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+                    with urllib.request.urlopen(req, timeout=10) as resp, open(out_file, 'wb') as f:
+                        f.write(resp.read())
+
+                await loop.run_in_executor(None, fetch_fallback)
+                chat = await event.get_input_chat()
+                await client.send_file(chat, out_file, voice_note=True)
+                if os.path.exists(out_file):
+                    os.remove(out_file)
+                await status.delete()
+            except Exception as e2:
+                await status.edit(f"```text\n[!] TTS Failed: {e2}\n```")
 
     # --- .song <name> ---
     @client.on(events.NewMessage(outgoing=True, pattern=r'^\.song(?:\s+(.+))?'))
@@ -213,32 +262,3 @@ def setup(client):
             await status.delete()
         except Exception as e:
             await status.edit(f"```text\n[!] PFP Error: {e}\n```")
-
-    # --- .tts <text/reply> ---
-    @client.on(events.NewMessage(outgoing=True, pattern=r'^\.tts(?:\s+(.+))?'))
-    async def text_to_speech(event):
-        arg = event.pattern_match.group(1)
-        reply = await event.get_reply_message()
-        text = arg if arg else (reply.raw_text if reply else "")
-        if not text:
-            await event.edit("```text\n[!] Provide text or reply: .tts <text>\n```")
-            return
-        status = await event.edit("```text\n┌───「 🎙️ 𝗚𝗘𝗡𝗘𝗥𝗔𝗧𝗜𝗡𝗚 𝗔𝗨𝗗𝗜𝗢... 」\n└───「 ⚡ Converting text to voice 」\n```")
-        out_file = f"tts_{event.id}.mp3"
-        try:
-            encoded_text = urllib.parse.quote(text[:200])
-            url = f"https://translate.google.com/translate_tts?ie=UTF-8&q={encoded_text}&tl=hi&client=tw-ob"
-            import urllib.request
-            req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-            loop = asyncio.get_event_loop()
-            def fetch_audio():
-                with urllib.request.urlopen(req) as resp, open(out_file, 'wb') as f:
-                    f.write(resp.read())
-            await loop.run_in_executor(None, fetch_audio)
-            chat = await event.get_input_chat()
-            await client.send_file(chat, out_file, voice_note=True)
-            if os.path.exists(out_file):
-                os.remove(out_file)
-            await status.delete()
-        except Exception as e:
-            await status.edit(f"```text\n[!] TTS Failed: {e}\n```")
