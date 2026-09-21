@@ -6,6 +6,7 @@ from telethon.errors import YouBlockedUserError
 
 def resize_for_sticker(image_path, output_path):
     im = Image.open(image_path)
+    im = im.convert("RGBA")
     maxsize = (512, 512)
     im.thumbnail(maxsize, Image.Resampling.LANCZOS)
     im.save(output_path, "PNG")
@@ -27,10 +28,8 @@ def setup(client):
         try:
             quotly_peer = await client.get_input_entity("@QuotLyBot")
 
-            # Forward the replied message to QuotLyBot
             fwd_msg = await client.forward_messages(quotly_peer, reply)
 
-            # Agar .q r command di hai toh forward kiye gaye msg par reply karke /q r bhejo
             if "r" in arg:
                 await asyncio.sleep(0.3)
                 cmd_msg = await client.send_message(quotly_peer, "/q r", reply_to=fwd_msg.id)
@@ -38,7 +37,6 @@ def setup(client):
             else:
                 threshold_id = fwd_msg.id
 
-            # Wait for Quotly bot sticker output
             sticker_msg = None
             for _ in range(30):
                 await asyncio.sleep(0.5)
@@ -74,18 +72,26 @@ def setup(client):
 
         me = await client.get_me()
         user_id = me.id
-        uname = me.username or f"user{user_id}"
+        uname = me.username or f"user_{user_id}"
         pack_shortname = f"keshav_{user_id}_pack"
         pack_title = f"K E S H A V Pack (@{uname})"
 
-        dl_path = f"temp_kang_{event.id}"
         formatted_path = f"kang_{event.id}.png"
+        downloaded_file = None
 
         try:
-            await client.download_media(reply, file=dl_path)
-            resize_for_sticker(dl_path, formatted_path)
+            # Telethon returns the actual saved filepath
+            downloaded_file = await client.download_media(reply, file=f"temp_kang_{event.id}")
+            if not downloaded_file or not os.path.exists(downloaded_file):
+                await status.edit("```text\n[!] Media download failed.\n```")
+                return
 
-            async with client.conversation("@Stickers", timeout=20) as conv:
+            resize_for_sticker(downloaded_file, formatted_path)
+
+            async with client.conversation("@Stickers", timeout=25) as conv:
+                await conv.send_message("/cancel")
+                await conv.get_response()
+
                 await conv.send_message("/addsticker")
                 resp = await conv.get_response()
 
@@ -138,7 +144,7 @@ def setup(client):
         except Exception as e:
             await status.edit(f"```text\n[!] Kang Failed: {e}\n```")
         finally:
-            if os.path.exists(dl_path):
-                os.remove(dl_path)
+            if downloaded_file and os.path.exists(downloaded_file):
+                os.remove(downloaded_file)
             if os.path.exists(formatted_path):
                 os.remove(formatted_path)
