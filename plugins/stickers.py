@@ -20,23 +20,30 @@ def setup(client):
             await event.edit("```text\n[!] Reply to any text message to quote it.\n```")
             return
 
-        mode_arg = (event.pattern_match.group(1) or "").strip().lower()
-        status = await event.edit("```text\n┌───「 💬 𝗤𝗨𝗢𝗧𝗜𝗡𝗚 𝗠𝗘𝗦𝗦𝗔𝗚𝗘... 」\n└───「 ⚡ Converting via Quotly 」\n```")
+        arg = (event.pattern_match.group(1) or "").strip().lower()
+        status = await event.edit("```text\n┌───「 💬 𝗤𝗨𝗢𝗧𝗜𝗡𝗚 𝗠𝗘𝗦𝗦𝗔𝗚𝗘... 」\n└───「 ⚡ Processing sticker frame 」\n```")
         chat = await event.get_input_chat()
 
         try:
-            # Send/forward directly without conversation lock
-            fwd_msg = await client.forward_messages("@QuotLyBot", reply)
+            quotly_peer = await client.get_input_entity("@QuotLyBot")
 
-            if mode_arg == "r":
-                await client.send_message("@QuotLyBot", "/q r")
+            # Forward the replied message to QuotLyBot
+            fwd_msg = await client.forward_messages(quotly_peer, reply)
 
-            # Wait for Quotly bot to reply (max 12 seconds)
+            # Agar .q r command di hai toh forward kiye gaye msg par reply karke /q r bhejo
+            if "r" in arg:
+                await asyncio.sleep(0.3)
+                cmd_msg = await client.send_message(quotly_peer, "/q r", reply_to=fwd_msg.id)
+                threshold_id = cmd_msg.id
+            else:
+                threshold_id = fwd_msg.id
+
+            # Wait for Quotly bot sticker output
             sticker_msg = None
-            for _ in range(24):
+            for _ in range(30):
                 await asyncio.sleep(0.5)
-                async for msg in client.iter_messages("@QuotLyBot", limit=3):
-                    if msg.id > fwd_msg.id and msg.media:
+                async for msg in client.iter_messages(quotly_peer, limit=5):
+                    if msg.id > threshold_id and msg.media:
                         sticker_msg = msg
                         break
                 if sticker_msg:
@@ -45,10 +52,9 @@ def setup(client):
             if sticker_msg and sticker_msg.media:
                 await client.send_file(chat, sticker_msg.media, reply_to=reply.id)
                 await status.delete()
-                # Mark as read in bot DM
-                await client.send_read_acknowledge("@QuotLyBot")
+                await client.send_read_acknowledge(quotly_peer)
             else:
-                await status.edit("```text\n[!] Quotly bot did not respond in time.\n```")
+                await status.edit("```text\n[!] Quotly bot timed out. Try again!\n```")
 
         except YouBlockedUserError:
             await status.edit("```text\n[!] Unblock @QuotLyBot first!\n```")
