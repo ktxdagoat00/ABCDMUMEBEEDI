@@ -1,5 +1,4 @@
 import os
-import io
 import asyncio
 from PIL import Image
 from telethon import events
@@ -13,20 +12,28 @@ def resize_for_sticker(image_path, output_path):
 
 def setup(client):
 
-    # --- 1. .q (Quoted message to Sticker via Quotly) ---
-    @client.on(events.NewMessage(outgoing=True, pattern=r'^\.q$'))
+    # --- 1. .q / .q r (Quoted message to Sticker via Quotly) ---
+    @client.on(events.NewMessage(outgoing=True, pattern=r'^\.q(?:\s+(.+))?'))
     async def quotly_cmd(event):
         reply = await event.get_reply_message()
         if not reply:
             await event.edit("```text\n[!] Reply to any text message to quote it.\n```")
             return
 
+        mode_arg = (event.pattern_match.group(1) or "").strip().lower()
         status = await event.edit("```text\n┌───「 💬 𝗤𝗨𝗢𝗧𝗜𝗡𝗚 𝗠𝗘𝗦𝗦𝗔𝗚𝗘... 」\n└───「 ⚡ Converting via Quotly 」\n```")
         chat = await event.get_input_chat()
 
         try:
-            async with client.conversation("@QuotLyBot", timeout=12) as conv:
-                await conv.forward_messages(reply)
+            async with client.conversation("@QuotLyBot", timeout=15) as conv:
+                # Forward reply message using standard client method
+                await client.forward_messages("@QuotLyBot", reply)
+
+                # Agar .q r bola hai toh Quotly ko reply quote render karne bolo
+                if mode_arg == "r":
+                    await conv.send_message("/q r")
+                
+                # Fetch response from Quotly
                 response = await conv.get_response()
                 await conv.mark_read()
 
@@ -65,7 +72,6 @@ def setup(client):
             resize_for_sticker(dl_path, formatted_path)
 
             async with client.conversation("@Stickers", timeout=20) as conv:
-                # Check if pack exists by adding sticker directly
                 await conv.send_message("/addsticker")
                 resp = await conv.get_response()
 
@@ -73,7 +79,6 @@ def setup(client):
                     await conv.send_message(pack_shortname)
                     resp = await conv.get_response()
 
-                # If pack does not exist, create a new one
                 if "Invalid pack" in resp.text or "not found" in resp.text.lower() or "Choose a sticker set" in resp.text:
                     await conv.send_message("/cancel")
                     await conv.get_response()
@@ -92,7 +97,6 @@ def setup(client):
                     await conv.send_message(pack_shortname)
                     await conv.get_response()
                 else:
-                    # Uploading sticker to existing pack
                     await conv.send_file(formatted_path, force_document=True)
                     await conv.get_response()
                     await conv.send_message(target_emoji)
