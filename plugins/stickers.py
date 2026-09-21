@@ -18,7 +18,7 @@ def setup(client):
     async def quotly_cmd(event):
         reply = await event.get_reply_message()
         if not reply:
-            await event.edit("```text\n[!] Reply to any text message to quote it.\n```")
+            await event.edit("```text\n[!] Reply to any message to quote it.\n```")
             return
 
         arg = (event.pattern_match.group(1) or "").strip().lower()
@@ -27,18 +27,24 @@ def setup(client):
 
         try:
             quotly_peer = await client.get_input_entity("@QuotLyBot")
-
-            fwd_msg = await client.forward_messages(quotly_peer, reply)
-
+            
+            # Message(s) to forward
+            msgs_to_fwd = []
             if "r" in arg:
-                await asyncio.sleep(0.3)
-                cmd_msg = await client.send_message(quotly_peer, "/q r", reply_to=fwd_msg.id)
-                threshold_id = cmd_msg.id
+                # If .q r is used, check if the replied message itself is replying to another message
+                parent_reply = await reply.get_reply_message()
+                if parent_reply:
+                    msgs_to_fwd = [parent_reply, reply]
+                else:
+                    msgs_to_fwd = [reply]
             else:
-                threshold_id = fwd_msg.id
+                msgs_to_fwd = [reply]
+
+            last_sent = await client.forward_messages(quotly_peer, msgs_to_fwd)
+            threshold_id = last_sent[-1].id if isinstance(last_sent, list) else last_sent.id
 
             sticker_msg = None
-            for _ in range(30):
+            for _ in range(35):
                 await asyncio.sleep(0.5)
                 async for msg in client.iter_messages(quotly_peer, limit=5):
                     if msg.id > threshold_id and msg.media:
@@ -52,7 +58,7 @@ def setup(client):
                 await status.delete()
                 await client.send_read_acknowledge(quotly_peer)
             else:
-                await status.edit("```text\n[!] Quotly bot timed out. Try again!\n```")
+                await status.edit("```text\n[!] Quotly bot did not respond in time.\n```")
 
         except YouBlockedUserError:
             await status.edit("```text\n[!] Unblock @QuotLyBot first!\n```")
@@ -80,7 +86,6 @@ def setup(client):
         downloaded_file = None
 
         try:
-            # Telethon returns the actual saved filepath
             downloaded_file = await client.download_media(reply, file=f"temp_kang_{event.id}")
             if not downloaded_file or not os.path.exists(downloaded_file):
                 await status.edit("```text\n[!] Media download failed.\n```")
@@ -88,39 +93,56 @@ def setup(client):
 
             resize_for_sticker(downloaded_file, formatted_path)
 
-            async with client.conversation("@Stickers", timeout=25) as conv:
+            async with client.conversation("@Stickers", timeout=30) as conv:
+                # Reset previous unfinished dialog
                 await conv.send_message("/cancel")
                 await conv.get_response()
 
+                # Step 1: Try adding to existing pack
                 await conv.send_message("/addsticker")
-                resp = await conv.get_response()
+                resp1 = await conv.get_response()
 
-                if "Choose a sticker pack" in resp.text or "pack" in resp.text.lower():
+                # If Stickers bot asks to choose a pack
+                if "Choose a sticker set" in resp1.text or "Choose a sticker pack" in resp1.text or "pack" in resp1.text.lower():
                     await conv.send_message(pack_shortname)
-                    resp = await conv.get_response()
+                    resp2 = await conv.get_response()
+                else:
+                    resp2 = resp1
 
-                if "Invalid pack" in resp.text or "not found" in resp.text.lower() or "Choose a sticker set" in resp.text:
+                # If pack does not exist yet -> create newpack
+                if "Invalid pack" in resp2.text or "not found" in resp2.text.lower() or "don't have" in resp2.text.lower():
                     await conv.send_message("/cancel")
                     await conv.get_response()
+
                     await conv.send_message("/newpack")
                     await conv.get_response()
+
                     await conv.send_message(pack_title)
                     await conv.get_response()
+
                     await conv.send_file(formatted_path, force_document=True)
                     await conv.get_response()
+
                     await conv.send_message(target_emoji)
                     await conv.get_response()
+
                     await conv.send_message("/publish")
                     await conv.get_response()
+
                     await conv.send_message("/skip")
                     await conv.get_response()
+
                     await conv.send_message(pack_shortname)
                     await conv.get_response()
+
+                # Pack exists, just upload the sticker
                 else:
                     await conv.send_file(formatted_path, force_document=True)
                     await conv.get_response()
+
                     await conv.send_message(target_emoji)
                     await conv.get_response()
+
                     await conv.send_message("/done")
                     await conv.get_response()
 
