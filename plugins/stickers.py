@@ -25,23 +25,31 @@ def setup(client):
         chat = await event.get_input_chat()
 
         try:
-            async with client.conversation("@QuotLyBot", timeout=15) as conv:
-                # Forward reply message using standard client method
-                await client.forward_messages("@QuotLyBot", reply)
+            # Send/forward directly without conversation lock
+            fwd_msg = await client.forward_messages("@QuotLyBot", reply)
 
-                # Agar .q r bola hai toh Quotly ko reply quote render karne bolo
-                if mode_arg == "r":
-                    await conv.send_message("/q r")
-                
-                # Fetch response from Quotly
-                response = await conv.get_response()
-                await conv.mark_read()
+            if mode_arg == "r":
+                await client.send_message("@QuotLyBot", "/q r")
 
-                if response and response.media:
-                    await client.send_file(chat, response.media, reply_to=reply.id)
-                    await status.delete()
-                else:
-                    await status.edit("```text\n[!] Quotly failed to generate sticker.\n```")
+            # Wait for Quotly bot to reply (max 12 seconds)
+            sticker_msg = None
+            for _ in range(24):
+                await asyncio.sleep(0.5)
+                async for msg in client.iter_messages("@QuotLyBot", limit=3):
+                    if msg.id > fwd_msg.id and msg.media:
+                        sticker_msg = msg
+                        break
+                if sticker_msg:
+                    break
+
+            if sticker_msg and sticker_msg.media:
+                await client.send_file(chat, sticker_msg.media, reply_to=reply.id)
+                await status.delete()
+                # Mark as read in bot DM
+                await client.send_read_acknowledge("@QuotLyBot")
+            else:
+                await status.edit("```text\n[!] Quotly bot did not respond in time.\n```")
+
         except YouBlockedUserError:
             await status.edit("```text\n[!] Unblock @QuotLyBot first!\n```")
         except Exception as e:
