@@ -28,7 +28,6 @@ def setup(client):
         status = await event.edit(f"```text\n┌───「 🚨 𝗚𝗟𝗢𝗕𝗔𝗟 𝗕𝗔𝗡 𝗜𝗡𝗜𝗧𝗜𝗔𝗧𝗘𝗗 」\n└─ 🎯 Target: {target.id}\n```")
         
         banned_count = 0
-        failed_count = 0
         ban_rights = ChatBannedRights(until_date=None, view_messages=True, send_messages=True)
 
         async for dialog in client.iter_dialogs():
@@ -38,7 +37,7 @@ def setup(client):
                     banned_count += 1
                     await asyncio.sleep(0.08)
                 except Exception:
-                    failed_count += 1
+                    pass
 
         card = (
             "```text\n"
@@ -46,7 +45,6 @@ def setup(client):
             "║\n"
             f"╠─ 🎯 𝗧𝗔𝗥𝗚𝗘𝗧 :: {getattr(target, 'first_name', 'User')} ({target.id})\n"
             f"╠─ 🔨 𝗕𝗔𝗡𝗡𝗘𝗗 :: {banned_count} groups\n"
-            f"╠─ 🛡️ 𝗦𝗞𝗜𝗣    :: {failed_count} groups (No Rights)\n"
             "║\n"
             "╚══════════════════════════════════════╝\n"
             "```"
@@ -75,7 +73,6 @@ def setup(client):
         status = await event.edit(f"```text\n┌───「 🕊️ 𝗚𝗟𝗢𝗕𝗔𝗟 𝗨𝗡𝗕𝗔𝗡 𝗜𝗡𝗜𝗧𝗜𝗔𝗧𝗘𝗗 」\n└─ 🎯 Target: {target.id}\n```")
         
         unbanned_count = 0
-        failed_count = 0
         unban_rights = ChatBannedRights(until_date=None, view_messages=False, send_messages=False)
 
         async for dialog in client.iter_dialogs():
@@ -85,7 +82,7 @@ def setup(client):
                     unbanned_count += 1
                     await asyncio.sleep(0.08)
                 except Exception:
-                    failed_count += 1
+                    pass
 
         card = (
             "```text\n"
@@ -93,7 +90,6 @@ def setup(client):
             "║\n"
             f"╠─ 🎯 𝗧𝗔𝗥𝗚𝗘𝗧 :: {getattr(target, 'first_name', 'User')} ({target.id})\n"
             f"╠─ 🕊️ 𝗨𝗡𝗕𝗔𝗡   :: {unbanned_count} groups\n"
-            f"╠─ 🛡️ 𝗦𝗞𝗜𝗣    :: {failed_count} groups (No Rights)\n"
             "║\n"
             "╚═══════════════════════════════════════╝\n"
             "```"
@@ -122,7 +118,6 @@ def setup(client):
         status = await event.edit(f"```text\n┌───「 🔇 𝗚𝗟𝗢𝗕𝗔𝗟 𝗠𝗨𝗧𝗘 𝗜𝗡𝗜𝗧𝗜𝗔𝗧𝗘𝗗 」\n└─ 🎯 Target: {target.id}\n```")
         
         muted_count = 0
-        failed_count = 0
         mute_rights = ChatBannedRights(until_date=None, send_messages=True, send_media=True, send_stickers=True, send_gifs=True)
 
         async for dialog in client.iter_dialogs():
@@ -132,7 +127,7 @@ def setup(client):
                     muted_count += 1
                     await asyncio.sleep(0.08)
                 except Exception:
-                    failed_count += 1
+                    pass
 
         card = (
             "```text\n"
@@ -140,7 +135,6 @@ def setup(client):
             "║\n"
             f"╠─ 🎯 𝗧𝗔𝗥𝗚𝗘𝗧 :: {getattr(target, 'first_name', 'User')} ({target.id})\n"
             f"╠─ 🔇 𝗠𝗨𝗧𝗘𝗗   :: {muted_count} groups\n"
-            f"╠─ 🛡️ 𝗦𝗞𝗜𝗣    :: {failed_count} groups (No Rights)\n"
             "║\n"
             "╚══════════════════════════════════════╝\n"
             "```"
@@ -169,7 +163,6 @@ def setup(client):
         status = await event.edit(f"```text\n┌───「 🔊 𝗚𝗟𝗢𝗕𝗔𝗟 𝗨𝗡𝗠𝗨𝗧𝗘 𝗜𝗡𝗜𝗧𝗜𝗔𝗧𝗘𝗗 」\n└─ 🎯 Target: {target.id}\n```")
         
         unmuted_count = 0
-        failed_count = 0
         unmute_rights = ChatBannedRights(until_date=None, send_messages=False, send_media=False, send_stickers=False, send_gifs=False)
 
         async for dialog in client.iter_dialogs():
@@ -179,7 +172,7 @@ def setup(client):
                     unmuted_count += 1
                     await asyncio.sleep(0.08)
                 except Exception:
-                    failed_count += 1
+                    pass
 
         card = (
             "```text\n"
@@ -187,7 +180,6 @@ def setup(client):
             "║\n"
             f"╠─ 🎯 𝗧𝗔𝗥𝗚𝗘𝗧 :: {getattr(target, 'first_name', 'User')} ({target.id})\n"
             f"╠─ 🔊 𝗨𝗡𝗠𝗨𝗧𝗘 :: {unmuted_count} groups\n"
-            f"╠─ 🛡️ 𝗦𝗞𝗜𝗣    :: {failed_count} groups (No Rights)\n"
             "║\n"
             "╚════════════════════════════════════════╝\n"
             "```"
@@ -205,7 +197,6 @@ def setup(client):
         status = await event.edit("```text\n┌───「 📌 𝗚𝗟𝗢𝗕𝗔𝗟 𝗣𝗜𝗡 𝗜𝗡𝗜𝗧𝗜𝗔𝗧𝗘𝗗... 」\n└───「 Broadcasting & Pinning 」\n```")
         
         pinned_count = 0
-        failed_count = 0
 
         async for dialog in client.iter_dialogs():
             if dialog.is_group or dialog.is_channel:
@@ -215,14 +206,13 @@ def setup(client):
                     pinned_count += 1
                     await asyncio.sleep(0.12)
                 except Exception:
-                    failed_count += 1
+                    pass
 
         card = (
             "```text\n"
             "╔════「 ⚡ 𝗚𝗟𝗢𝗕𝗔𝗟 𝗣𝗜𝗡 𝗖𝗢𝗠𝗣𝗟𝗘𝗧𝗘𝗗 」════╗\n"
             "║\n"
             f"╠─ 📌 𝗣𝗜𝗡𝗡𝗘𝗗 :: {pinned_count} groups\n"
-            f"╠─ 🛡️ 𝗦𝗞𝗜𝗣   :: {failed_count} groups (No Rights)\n"
             "║\n"
             "╚═════════════════════════════════════╝\n"
             "```"
@@ -235,7 +225,6 @@ def setup(client):
         status = await event.edit("```text\n┌───「 🔓 𝗚𝗟𝗢𝗕𝗔𝗟 𝗨𝗡𝗣𝗜𝗡 𝗜𝗡𝗜𝗧𝗜𝗔𝗧𝗘𝗗... 」\n└───「 Clearing pinned messages 」\n```")
         
         unpinned_count = 0
-        failed_count = 0
 
         async for dialog in client.iter_dialogs():
             if dialog.is_group or dialog.is_channel:
@@ -244,14 +233,13 @@ def setup(client):
                     unpinned_count += 1
                     await asyncio.sleep(0.08)
                 except Exception:
-                    failed_count += 1
+                    pass
 
         card = (
             "```text\n"
             "╔════「 ⚡ 𝗚𝗟𝗢𝗕𝗔𝗟 𝗨𝗡𝗣𝗜𝗡 𝗖𝗢𝗠𝗣𝗟𝗘𝗧𝗘𝗗 」════╗\n"
             "║\n"
             f"╠─ 🔓 𝗨𝗡𝗣𝗜𝗡𝗡𝗘𝗗 :: {unpinned_count} groups\n"
-            f"╠─ 🛡️ 𝗦𝗞𝗜𝗣     :: {failed_count} groups (No Rights)\n"
             "║\n"
             "╚═══════════════════════════════════════╝\n"
             "```"
