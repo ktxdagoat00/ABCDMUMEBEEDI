@@ -3,3 +3,4 @@ aiohttp
 requests
 yt-dlp
 static-ffmpeg
+Pillow
