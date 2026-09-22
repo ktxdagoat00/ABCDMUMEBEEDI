@@ -62,7 +62,7 @@ CMD_MANUAL = {
     # STICKERS & CONVERSION
     "q": "Convert replied text message to a Quotly sticker.",
     "q r": "Quote replied message including parent context in Quotly.",
-    "kang": "Kang replied sticker/image into personal DEMON pack.",
+    "kang": "Kang replied sticker/image into personal K E S H A V pack.",
 
     # AUDIT & SCANNER
     "audit": "Run deep chat X-Ray scanning (deleted, bots, humans, admins).",
@@ -78,7 +78,7 @@ def setup(client):
         delta = round((time.time() - start) * 1000)
         card = (
             "```text\n"
-            "╔════「 ⚡ 𝗗 𝗘 𝗠 𝗢 𝗡  𝗣 𝗢 𝗡 𝗚 ⚡ 」════╗\n"
+            "╔════「 ⚡ �K E S H A V ⚡ 」════╗\n"
             "║\n"
             f"╠─ ⚡ LATENCY :: {delta}ms\n"
             "╠─ 👤 MASTER  :: K E S H A V\n"
@@ -93,7 +93,7 @@ def setup(client):
     async def alive_handler(event):
         card = (
             "```text\n"
-            "╔════「 ⚡ 𝗗 𝗘 𝗠 𝗢 𝗡  𝗨 𝗦 𝗘 𝗥 𝗕 𝗢 𝗧 ⚡ 」════╗\n"
+            "╔════「 ⚡ 𝗞 𝗘 𝗦 𝗛 𝗔 𝗩  𝗨 𝗦 𝗘 𝗥 𝗕 𝗢 𝗧 ⚡ 」════╗\n"
             "║\n"
             "╠─ 👤 MASTER  :: K E S H A V\n"
             "╠─ 🛰️ ENGINE  :: Telethon v1.42 (Py 3.14)\n"
@@ -129,7 +129,7 @@ def setup(client):
 
         panel = (
             "```text\n"
-            "╔════════「 🛠️ 𝗗𝗘𝗠𝗢𝗡 𝗖𝗢𝗡𝗧𝗥𝗢𝗟 𝗣𝗔𝗡𝗘𝗟 」════════╗\n"
+            "╔════════「 🛠️ 𝗞𝗘𝗦𝗛𝗔𝗩 𝗖𝗢𝗡𝗧𝗥𝗢𝗟 𝗣𝗔𝗡𝗘𝗟 」════════╗\n"
             "║ 💡 Tip: Type .help <cmd> for usage & syntax\n"
             "║\n"
             "╠══「 ⚡️ 𝗦𝗬𝗦𝗧𝗘𝗠 & 𝗦𝗧𝗔𝗧𝗨𝗦 」══\n"
@@ -192,13 +192,13 @@ def setup(client):
             "╠══「 🎨 𝗦𝗧𝗜𝗖𝗞𝗘𝗥𝗦 & 𝗖𝗢𝗡𝗩𝗘𝗥𝗧 」══\n"
             "╠─ 44. .q              :: Convert text to Quotly sticker\n"
             "╠─ 45. .q r            :: Quotly sticker with parent reply\n"
-            "╠─ 46. .kang <emoji>   :: Kang sticker/photo to DEMON pack\n"
+            "╠─ 46. .kang <emoji>   :: Kang sticker/photo to KESHAV pack\n"
             "║\n"
             "╠══「 🔍 𝗔𝗨𝗗𝗜𝗧 & 𝗫-𝗥𝗔𝗬 」══\n"
             "╠─ 47. .audit          :: Full chat X-Ray (bots/humans/ghosts)\n"
             "╠─ 48. .audit clean    :: Purge deleted accounts from chat\n"
             "║\n"
-            "╚═════════════「 ⚡️ 𝗗𝗘𝗠𝗢𝗡-𝗘𝗫𝗘𝗖 ⚡️ 」═════════════╝\n"
+            "╚═════════════「 ⚡️ 𝗖𝗬𝗕𝗘𝗥-𝗘𝗫𝗘𝗖 ⚡️ 」═════════════╝\n"
             "```"
         )
         await event.edit(panel)
