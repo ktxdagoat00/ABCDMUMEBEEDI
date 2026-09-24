@@ -68,7 +68,6 @@ CMD_MANUAL = {
     "audit": "Run deep chat X-Ray scanning (deleted, bots, humans, admins).",
     "audit clean": "Mass-kick all ghost/deleted accounts from the group.",
     "readall": "Mark all unread chats and channels as read in one click.",
-    "secret": "Drop encrypted cipher message (.secret pwd | msg). Reply .unlock pwd."
 }
 
 def setup(client):
@@ -202,7 +201,6 @@ def setup(client):
             "║\n"
             "╠══「 🔐 𝗦𝗘𝗖𝗨𝗥𝗜𝗧𝗬 & 𝗦𝗧𝗘𝗔𝗟𝗧𝗛 𝗧𝗢𝗢𝗟𝗦 」══\n"
             "╠─ 49. .readall       :: Mark all unread chats as read\n"
-            "╠─ 50. .secret <p|m>  :: Self-decrypting password cipher\n"
             "║\n"
             "╚═════════════「 ⚡️ 𝗖𝗬𝗕𝗘𝗥-𝗘𝗫𝗘𝗖 ⚡️ 」═════════════╝\n"
             "```"
