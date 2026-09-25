@@ -6,21 +6,37 @@ from telethon import events
 def clean_text(text):
     if not text:
         return ""
-    # Normalize fancy unicode/small-caps to standard ascii
     normalized = unicodedata.normalize("NFKD", text)
     return "".join(c for c in normalized if not unicodedata.combining(c)).lower()
 
 def extract_coins(raw_text):
-    # Match patterns like: Coins: $12,345 or Coins: 5000
     cleaned = clean_text(raw_text)
-    match = re.search(r'coins?:\s*\$?([\d,]+)', cleaned)
+    # Check for K suffix (e.g., 5k, 10k)
+    k_match = re.search(r'coins?[:\s]*\$?([\d\.]+)\s*k', cleaned)
+    if k_match:
+        try:
+            return int(float(k_match.group(1)) * 1000)
+        except ValueError:
+            pass
+
+    # Standard numeric match (e.g., $1,000 or 5000)
+    match = re.search(r'coins?[:\s]*\$?([\d,]+)', cleaned)
     if match:
         num_str = match.group(1).replace(",", "")
         try:
             return int(num_str)
         except ValueError:
-            return 0
-    return 0
+            pass
+
+    # Search any dollar amount if 'coins' word exists
+    if "coin" in cleaned:
+        num_any = re.search(r'\$?([\d,]{2,})', cleaned)
+        if num_any:
+            try:
+                return int(num_any.group(1).replace(",", ""))
+            except ValueError:
+                pass
+    return 10000  # Fallback to max rob so the script never stops
 
 def setup(client):
 
@@ -28,25 +44,25 @@ def setup(client):
     async def baka_auto_rob(event):
         reply = await event.get_reply_message()
         if not reply:
-            await event.edit("```text\n[!] Reply to target user's message with .bkr\n```")
+            await event.edit("```text\n[!] Reply to target user message with .bkr\n```")
             return
 
         chat = await event.get_input_chat()
         target_msg_id = reply.id
 
-        # 1. Stealth mode: delete command trigger so nobody sees bot syntax
+        # 1. Stealth delete
         await event.delete()
 
-        # 2. Send /bal as a direct reply to the target
+        # 2. Send /bal
         bal_msg = await client.send_message(chat, "/bal", reply_to=target_msg_id)
 
-        # 3. Wait for @im_bakabot's response to /bal
+        # 3. Wait for /bal response
         baka_bal_resp = None
-        for _ in range(40):  # 8 seconds max wait (0.2s poll)
+        for _ in range(35):
             await asyncio.sleep(0.2)
-            async for msg in client.iter_messages(chat, limit=6):
-                # Ensure it is replying to /bal or mentions victim/coins
-                if msg.reply_to_msg_id == bal_msg.id or ("coins" in clean_text(msg.raw_text) and msg.id > bal_msg.id):
+            async for msg in client.iter_messages(chat, limit=5):
+                c = clean_text(msg.raw_text)
+                if msg.reply_to_msg_id == bal_msg.id or ("coin" in c and msg.id > bal_msg.id):
                     baka_bal_resp = msg
                     break
             if baka_bal_resp:
@@ -57,35 +73,35 @@ def setup(client):
 
         bal_content = clean_text(baka_bal_resp.raw_text)
 
-        # Check if target is alive
+        # Target must be alive
         if "alive" not in bal_content:
             return
 
-        # 4. Target is alive -> send /kill to target
+        # 4. Extract coins right away
+        coins = extract_coins(baka_bal_resp.raw_text)
+        rob_amount = min(coins, 10000) if coins > 0 else 10000
+
+        # 5. Send /kill
         kill_msg = await client.send_message(chat, "/kill", reply_to=target_msg_id)
 
-        # 5. Wait for @im_bakabot's response to /kill
+        # 6. Wait for /kill response
         baka_kill_resp = None
-        for _ in range(40):
+        for _ in range(35):
             await asyncio.sleep(0.2)
-            async for msg in client.iter_messages(chat, limit=6):
-                if msg.reply_to_msg_id == kill_msg.id or ("protected" in clean_text(msg.raw_text) and msg.id > kill_msg.id):
+            async for msg in client.iter_messages(chat, limit=5):
+                c = clean_text(msg.raw_text)
+                if msg.reply_to_msg_id == kill_msg.id or ("protect" in c and msg.id > kill_msg.id) or msg.id > kill_msg.id:
                     baka_kill_resp = msg
                     break
             if baka_kill_resp:
                 break
 
-        if not baka_kill_resp:
-            return
+        # Check protection
+        if baka_kill_resp:
+            kill_content = clean_text(baka_kill_resp.raw_text)
+            if "protect" in kill_content or "check protection" in kill_content:
+                return
 
-        kill_content = clean_text(baka_kill_resp.raw_text)
-
-        # If protected right now -> stop immediately
-        if "victim is protected" in kill_content or "check protection time" in kill_content or "protected right now" in kill_content:
-            return
-
-        # 6. Check coins and Rob
-        coins = extract_coins(baka_bal_resp.raw_text)
-        if coins > 0:
-            rob_amount = min(coins, 10000)
-            await client.send_message(chat, f"/rob {rob_amount}", reply_to=target_msg_id)
+        # 7. Execute /rob instantly
+        await asyncio.sleep(0.3)
+        await client.send_message(chat, f"/rob {rob_amount}", reply_to=target_msg_id)
