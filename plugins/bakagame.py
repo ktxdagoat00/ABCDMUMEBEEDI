@@ -24,15 +24,6 @@ def extract_coins(raw_text):
         return int(match.group(1))
     return 0
 
-def is_alive_status(raw_text):
-    c = clean_text(raw_text)
-    # Check both whole text and line-by-line
-    if "status" in c and "alive" in c:
-        return True
-    if "alive" in c and "dead" not in c:
-        return True
-    return False
-
 def setup(client):
 
     @client.on(events.NewMessage(outgoing=True, pattern=r'^\.bkr$'))
@@ -44,60 +35,70 @@ def setup(client):
         chat = event.chat_id
         target_msg_id = reply.id
 
-        # 1. Silently delete trigger
+        # Delete command quietly
         await event.delete()
 
-        # 2. Dispatch /bal directly to target
+        # Send /bal
         bal_msg = await client.send_message(chat, "/bal", reply_to=target_msg_id)
 
-        # 3. Dedicated fast-wait loop using event queue
-        baka_bal_resp = None
-        for _ in range(50):  # 10s timeout (0.2s tick)
-            await asyncio.sleep(0.2)
-            # Fetch recent 4 messages fresh from chat
-            async for m in client.iter_messages(chat, limit=4):
-                if m.id > bal_msg.id:
-                    txt = clean_text(m.raw_text)
-                    if "coin" in txt or "status" in txt or "rank" in txt:
-                        baka_bal_resp = m
-                        break
-            if baka_bal_resp:
-                break
+        # 1. Capture Bakabot response via live event listener
+        future_bal = asyncio.get_event_loop().create_future()
 
-        if not baka_bal_resp:
+        @client.on(events.NewMessage(chats=chat))
+        async def bal_catcher(e):
+            if not future_bal.done():
+                txt = clean_text(e.raw_text)
+                if ("coin" in txt or "status" in txt) and e.id > bal_msg.id:
+                    future_bal.set_result(e)
+
+        try:
+            baka_bal_resp = await asyncio.wait_for(future_bal, timeout=8.0)
+        except asyncio.TimeoutError:
+            client.remove_event_handler(bal_catcher)
+            return
+        finally:
+            client.remove_event_handler(bal_catcher)
+
+        raw_bal = baka_bal_resp.raw_text
+        c_bal = clean_text(raw_bal)
+
+        # Status check - check if not dead
+        # Bakabot me status 'alive' hota hai ya status field me 'dead' nahi hota
+        if "dead" in c_bal or ("alive" not in c_bal and "status" in c_bal):
             return
 
-        # 4. Check alive status
-        if not is_alive_status(baka_bal_resp.raw_text):
-            return
+        # Extract coins
+        w_coins = extract_coins(raw_bal)
 
-        # 5. Extract Coins (W)
-        w_coins = extract_coins(baka_bal_resp.raw_text)
-
-        # 6. Dispatch /kill on target
+        # Send /kill
         kill_msg = await client.send_message(chat, "/kill", reply_to=target_msg_id)
 
-        # 7. Listen for response to /kill
-        baka_kill_resp = None
-        for _ in range(50):
-            await asyncio.sleep(0.2)
-            async for m in client.iter_messages(chat, limit=4):
-                if m.id > kill_msg.id:
-                    txt = clean_text(m.raw_text)
-                    if "protect" in txt or "victim" in txt or "kill" in txt or "died" in txt:
-                        baka_kill_resp = m
-                        break
-            if baka_kill_resp:
-                break
+        # 2. Capture Bakabot response to /kill
+        future_kill = asyncio.get_event_loop().create_future()
 
-        # Check protection
+        @client.on(events.NewMessage(chats=chat))
+        async def kill_catcher(e):
+            if not future_kill.done():
+                if e.id > kill_msg.id:
+                    txt = clean_text(e.raw_text)
+                    if "protect" in txt or "victim" in txt or "kill" in txt or "died" in txt or "cooldown" in txt:
+                        future_kill.set_result(e)
+
+        try:
+            baka_kill_resp = await asyncio.wait_for(future_kill, timeout=8.0)
+        except asyncio.TimeoutError:
+            client.remove_event_handler(kill_catcher)
+            baka_kill_resp = None
+        finally:
+            client.remove_event_handler(kill_catcher)
+
         if baka_kill_resp:
             k_txt = clean_text(baka_kill_resp.raw_text)
             if "protect" in k_txt or "check protection" in k_txt:
                 return
 
-        # 8. Dispatch /rob
+        # 3. Send /rob
         if w_coins > 0:
             rob_amount = 10000 if w_coins >= 10000 else w_coins
-            await asyncio.sleep(0.15)
+            await asyncio.sleep(0.1)
             await client.send_message(chat, f"/rob {rob_amount}", reply_to=target_msg_id)
