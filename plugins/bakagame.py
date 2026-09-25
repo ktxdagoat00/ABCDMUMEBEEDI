@@ -10,33 +10,25 @@ def clean_text(text):
     return "".join(c for c in normalized if not unicodedata.combining(c)).lower()
 
 def extract_coins(raw_text):
+    if not raw_text:
+        return 0
+
+    # Line by line parsing - robust against fancy fonts
+    for line in raw_text.splitlines():
+        c_line = clean_text(line)
+        if "coin" in c_line:
+            # Match digits inside that specific line
+            digits = re.findall(r'\d+', c_line.replace(",", ""))
+            if digits:
+                return int(digits[0])
+
+    # Fallback search across entire text
     cleaned = clean_text(raw_text)
-    # Check for K suffix (e.g., 5k, 10k)
-    k_match = re.search(r'coins?[:\s]*\$?([\d\.]+)\s*k', cleaned)
-    if k_match:
-        try:
-            return int(float(k_match.group(1)) * 1000)
-        except ValueError:
-            pass
-
-    # Standard numeric match (e.g., $1,000 or 5000)
-    match = re.search(r'coins?[:\s]*\$?([\d,]+)', cleaned)
+    match = re.search(r'coin[^\d]*(\d+)', cleaned.replace(",", ""))
     if match:
-        num_str = match.group(1).replace(",", "")
-        try:
-            return int(num_str)
-        except ValueError:
-            pass
+        return int(match.group(1))
 
-    # Search any dollar amount if 'coins' word exists
-    if "coin" in cleaned:
-        num_any = re.search(r'\$?([\d,]{2,})', cleaned)
-        if num_any:
-            try:
-                return int(num_any.group(1).replace(",", ""))
-            except ValueError:
-                pass
-    return 10000  # Fallback to max rob so the script never stops
+    return 0
 
 def setup(client):
 
@@ -56,7 +48,7 @@ def setup(client):
         # 2. Send /bal
         bal_msg = await client.send_message(chat, "/bal", reply_to=target_msg_id)
 
-        # 3. Wait for /bal response
+        # 3. Wait for /bal response from Bakabot
         baka_bal_resp = None
         for _ in range(35):
             await asyncio.sleep(0.2)
@@ -77,9 +69,12 @@ def setup(client):
         if "alive" not in bal_content:
             return
 
-        # 4. Extract coins right away
+        # 4. Extract coins accurately
         coins = extract_coins(baka_bal_resp.raw_text)
-        rob_amount = min(coins, 10000) if coins > 0 else 10000
+        if coins <= 0:
+            return
+
+        rob_amount = min(coins, 10000)
 
         # 5. Send /kill
         kill_msg = await client.send_message(chat, "/kill", reply_to=target_msg_id)
@@ -102,6 +97,6 @@ def setup(client):
             if "protect" in kill_content or "check protection" in kill_content:
                 return
 
-        # 7. Execute /rob instantly
+        # 7. Execute /rob with exact parsed value
         await asyncio.sleep(0.3)
         await client.send_message(chat, f"/rob {rob_amount}", reply_to=target_msg_id)
