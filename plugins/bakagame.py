@@ -1,93 +1,108 @@
 import asyncio
 import re
 import unicodedata
+
 from telethon import events
 
-def normalize(text):
+MAX_ROB = 10000
+WAIT_TRIES = 20
+WAIT_DELAY = 0.3
+COIN_WORDS = "(?:coins?|соины|монеты)"
+COIN_PATTERNS = (
+    rf"{COIN_WORDS}[^0-9]{{0,15}}([0-9][0-9,._]*)\s*([km])?",
+    r"\$\s*([0-9][0-9,._]*)\s*([km])?",
+    r":\s*\$?\s*([0-9][0-9,._]*)\s*([km])?",
+)
+
+
+def clean_text(text):
     if not text:
         return ""
-    # Zero-width spaces clean karo aur fancy small-caps ko normal letters me badlo
-    text = text.replace("\u200b", "").replace("\u200c", "").replace("\u200d", "").replace("\ufeff", "")
-    nfkd = unicodedata.normalize("NFKD", text)
-    return "".join(c for c in nfkd if not unicodedata.combining(c)).lower()
+    out = []
+    for ch in unicodedata.normalize("NFKC", text):
+        if unicodedata.combining(ch):
+            continue
+        digit = unicodedata.decimal(ch, None)
+        out.append(str(digit) if digit is not None else ch.lower())
+    return "".join(out)
 
-def parse_coins(text):
-    clean = normalize(text)
-    # Search coins row: 💰 Coins: $12345
-    for line in clean.splitlines():
-        if "coin" in line:
-            digits = re.findall(r'\d+', line.replace(",", ""))
-            if digits:
-                return int(digits[0])
-    # Fallback search
-    digits = re.findall(r'\d+', clean.replace(",", ""))
-    return int(digits[0]) if digits else 0
+
+def _to_int(number, multiplier=1):
+    number = number.replace(",", "").replace("_", "").strip()
+    try:
+        return int(float(number) * multiplier)
+    except (ValueError, TypeError):
+        return None
+
+
+def extract_coins(raw_text):
+    cleaned = clean_text(raw_text)
+    for pattern in COIN_PATTERNS:
+        match = re.search(pattern, cleaned)
+        if not match:
+            continue
+        mult = {"k": 1000, "m": 1000000}.get(match.group(2), 1)
+        value = _to_int(match.group(1), mult)
+        if value:
+            return value
+    return None
+
 
 def setup(client):
 
     @client.on(events.NewMessage(outgoing=True, pattern=r'^\.bkr$'))
-    async def baka_runner(event):
+    async def baka_auto_rob(event):
         reply = await event.get_reply_message()
         if not reply:
             return
 
-        chat = event.chat_id
-        original_msg_id = reply.id
+        chat = await event.get_input_chat()
+        target_msg_id = reply.id
 
-        # 1. Delete .bkr trigger
+        async def wait_response(cmd_msg, keywords=()):
+            for _ in range(WAIT_TRIES):
+                await asyncio.sleep(WAIT_DELAY)
+                async for msg in client.iter_messages(chat, limit=15):
+                    if msg.id <= cmd_msg.id or msg.out:
+                        continue
+                    if msg.reply_to_msg_id not in (None, cmd_msg.id):
+                        continue
+                    content = clean_text(msg.raw_text)
+                    if keywords and not any(key in content for key in keywords):
+                        continue
+                    return msg
+            return None
+
+        # 1. Stealth delete trigger
         await event.delete()
 
-        # 2. Original message par /bal bhejte hain
-        bal_cmd = await client.send_message(chat, "/bal", reply_to=original_msg_id)
-
-        # 3. Bakabot ke /bal reply ka wait karo (Max 6 seconds)
-        bal_resp = None
-        for _ in range(30):
-            await asyncio.sleep(0.2)
-            async for m in client.iter_messages(chat, limit=6):
-                # Bakabot ya toh /bal ko reply karega ya direct coin card bhejega
-                if m.id > bal_cmd.id and ("coin" in normalize(m.raw_text) or "status" in normalize(m.raw_text)):
-                    bal_resp = m
-                    break
-            if bal_resp:
-                break
-
+        # 2. Step 1: /bal on target
+        bal_msg = await client.send_message(chat, "/bal", reply_to=target_msg_id)
+        bal_resp = await wait_response(bal_msg, ("coin", "$", "status"))
         if not bal_resp:
             return
 
-        norm_bal = normalize(bal_resp.raw_text)
+        bal_content = clean_text(bal_resp.raw_text)
 
-        # 4. Status Check -> must be ALIVE
-        if "alive" not in norm_bal:
+        # 3. Check Status -> Alive
+        if "alive" not in bal_content:
             return
 
-        # 5. Coins read karo
-        coins_xyz = parse_coins(bal_resp.raw_text)
+        # 4. Read coins
+        coins = extract_coins(bal_resp.raw_text)
 
-        # 6. Original message par /kill bhejte hain
-        kill_cmd = await client.send_message(chat, "/kill", reply_to=original_msg_id)
+        # 5. Step 2: /kill on target
+        kill_msg = await client.send_message(chat, "/kill", reply_to=target_msg_id)
+        kill_resp = await wait_response(kill_msg)
 
-        # 7. Bakabot ke /kill reply ka wait karo
-        kill_resp = None
-        for _ in range(30):
-            await asyncio.sleep(0.2)
-            async for m in client.iter_messages(chat, limit=6):
-                if m.id > kill_cmd.id:
-                    norm_m = normalize(m.raw_text)
-                    if "protect" in norm_m or "victim" in norm_m or "died" in norm_m or "kill" in norm_m:
-                        kill_resp = m
-                        break
-            if kill_resp:
-                break
+        # 6. Check Protection -> If protected then STOP
+        if kill_resp and "protect" in clean_text(kill_resp.raw_text):
+            return
 
-        # 8. Protection check: agar protected hai toh STOP
-        if kill_resp:
-            norm_kill = normalize(kill_resp.raw_text)
-            if "protect" in norm_kill or "check protection" in norm_kill:
-                return
+        # 7. Step 3: /rob with exact coins (Max 10000)
+        if not coins or coins <= 0:
+            return
 
-        # 9. Rob logic execute karo original message par
-        if coins_xyz > 0:
-            rob_val = 10000 if coins_xyz > 10000 else coins_xyz
-            await asyncio.sleep(0.1)
-            await client.send_message(chat, f"/rob {rob_val}", reply_to=original_msg_id)
+        rob_amount = min(coins, MAX_ROB)
+        await asyncio.sleep(0.2)
+        await client.send_message(chat, f"/rob {rob_amount}", reply_to=target_msg_id)
