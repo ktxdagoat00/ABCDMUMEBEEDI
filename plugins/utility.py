@@ -70,8 +70,10 @@ CMD_MANUAL = {
     "readall": "Mark all unread chats and channels as read in one click.",
     "cron": "Atomic precision scheduled dispatch (.cron HH:MM:SS.mmm AM/PM | target | msg).",
     "bkr": "Auto-stealth baka game runner (bal -> kill -> rob loop).",
+    "gcm": "Auto-snipe target user: trigger .bkr automatically when they message (.gcm user | .ungcm user).",
     "cron": "Atomic precision scheduled dispatch (.cron HH:MM:SS.mmm AM/PM | target | msg).",
     "bkr": "Auto-stealth baka game runner (bal -> kill -> rob loop).",
+    "gcm": "Auto-snipe target user: trigger .bkr automatically when they message (.gcm user | .ungcm user).",
 }
 
 def setup(client):
@@ -207,8 +209,10 @@ def setup(client):
             "╠─ 49. .readall       :: Mark all unread chats as read\n"
             "╠─ 50. .cron          :: Atomic ms-precision scheduled dispatch\n"
             "╠─ 51. .bkr           :: Auto-stealth Baka bot hunt & rob loop\n"
+            "╠─ 52. .gcm           :: Auto-sniper: auto .bkr on target arrival\n"
             "╠─ 50. .cron          :: Atomic ms-precision scheduled dispatch\n"
             "╠─ 51. .bkr           :: Auto-stealth Baka bot hunt & rob loop\n"
+            "╠─ 52. .gcm           :: Auto-sniper: auto .bkr on target arrival\n"
             "║\n"
             "╚═════════════「 ⚡️ 𝗖𝗬𝗕𝗘𝗥-𝗘𝗫𝗘𝗖 ⚡️ 」═════════════╝\n"
             "```"
