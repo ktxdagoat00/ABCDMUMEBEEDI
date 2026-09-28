@@ -1,7 +1,7 @@
 import asyncio
 import re
 import unicodedata
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from telethon import events
 
 MAX_ROB = 10000
@@ -15,6 +15,11 @@ COIN_PATTERNS = (
 )
 
 TARGET_WATCHLIST = {}
+# Active scheduled tasks list for .stopadv
+ACTIVE_ADVROB_TASKS = []
+
+# Indian Standard Time (UTC + 5:30)
+IST = timezone(timedelta(hours=5, minutes=30))
 
 def clean_text(text):
     if not text:
@@ -163,16 +168,25 @@ def setup(client):
             chat_input = await event.get_input_chat()
             await execute_bkr_sequence(client, chat_input, event.id)
 
+    # Cancel All Scheduled Tasks: .stopadv
+    @client.on(events.NewMessage(outgoing=True, pattern=r'^\.stopadv$'))
+    async def stop_all_advrob(event):
+        cancelled_count = 0
+        for task in ACTIVE_ADVROB_TASKS:
+            if not task.done():
+                task.cancel()
+                cancelled_count += 1
+        ACTIVE_ADVROB_TASKS.clear()
+        await event.edit(f"```text\n[✓] Successfully terminated {cancelled_count} scheduled .advrob task(s)!\n```")
+
     # Advanced Scheduled Rob: .advrob <user> | <time> | <chatid/here>
     @client.on(events.NewMessage(outgoing=True, pattern=r'^\.advrob\s+(.+)'))
     async def adv_rob_schedule(event):
         raw_args = event.pattern_match.group(1).strip()
         parts = [p.strip() for p in raw_args.split("|")]
         if len(parts) < 3:
-            # Fallback space split
             space_parts = raw_args.split()
             if len(space_parts) >= 4:
-                # E.g. .advrob @user 10:10:12 PM -10012345
                 target_arg = space_parts[0]
                 time_arg = f"{space_parts[1]} {space_parts[2]}"
                 chat_arg = space_parts[3]
@@ -184,7 +198,6 @@ def setup(client):
             time_arg = parts[1]
             chat_arg = parts[2]
 
-        # Resolve Target User
         try:
             if target_arg.isdigit() or (target_arg.startswith("-") and target_arg[1:].isdigit()):
                 target_user = await client.get_entity(int(target_arg))
@@ -194,7 +207,6 @@ def setup(client):
             await event.edit(f"```text\n[!] Target user not found: {e}\n```")
             return
 
-        # Resolve Target Chat
         try:
             if chat_arg.lower() == "here":
                 target_chat = await event.get_input_chat()
@@ -206,13 +218,13 @@ def setup(client):
             await event.edit(f"```text\n[!] Target chat not found: {e}\n```")
             return
 
-        # Parse Time
-        now = datetime.now()
+        # Parse Time in IST (Indian Standard Time)
+        now_ist = datetime.now(IST)
         target_dt = None
         for fmt in ("%I:%M:%S %p", "%I:%M %p", "%H:%M:%S", "%H:%M"):
             try:
                 parsed_t = datetime.strptime(time_arg.upper(), fmt).time()
-                target_dt = datetime.combine(now.date(), parsed_t)
+                target_dt = datetime.combine(now_ist.date(), parsed_t, tzinfo=IST)
                 break
             except ValueError:
                 continue
@@ -221,19 +233,23 @@ def setup(client):
             await event.edit("```text\n[!] Invalid time format. Use HH:MM:SS AM/PM\n```")
             return
 
-        if target_dt <= now:
+        # Agar time 1 minute se pehle ka nikal chuka hai tabhi agle din karega, warna aaj hi trigger hoga
+        if (target_dt - now_ist).total_seconds() < -30:
             target_dt += timedelta(days=1)
 
-        diff = (target_dt - now).total_seconds()
+        diff = (target_dt - now_ist).total_seconds()
+        if diff < 0:
+            diff = 0
 
         status_card = (
             "```text\n"
             "╔════「 ⏰ 𝗔𝗗𝗩𝗔𝗡𝗖𝗘𝗗 𝗦𝗡𝗜𝗣𝗘𝗥 𝗟𝗢𝗖𝗞𝗘𝗗 」════╗\n"
             "║\n"
             f"╠─ 🎯 TARGET :: {getattr(target_user, 'first_name', '')} ({target_user.id})\n"
-            f"╠─ 🕒 TIME   :: {target_dt.strftime('%I:%M:%S %p')}\n"
+            f"╠─ 🕒 TIME   :: {target_dt.strftime('%I:%M:%S %p')} (IST)\n"
             f"╠─ ⏳ REMAIN :: {int(diff)}s remaining\n"
             "╠─ ⚡ ACTION :: Auto-scan latest msg & .bkr\n"
+            "╠─ 🛑 CANCEL :: .stopadv\n"
             "║\n"
             "╚═══════════════════════════════════════╝\n"
             "```"
@@ -242,21 +258,24 @@ def setup(client):
 
         # Background Task
         async def scheduled_snipe_task():
-            wait_sec = (target_dt - datetime.now()).total_seconds()
-            if wait_sec > 0:
-                await asyncio.sleep(wait_sec)
+            try:
+                wait_sec = (target_dt - datetime.now(IST)).total_seconds()
+                if wait_sec > 0:
+                    await asyncio.sleep(wait_sec)
 
-            # Find latest message from the target user in target_chat
-            target_msg = None
-            async for m in client.iter_messages(target_chat, limit=100):
-                if m.sender_id == target_user.id:
-                    target_msg = m
-                    break
+                # Scan chat for latest message from target
+                target_msg = None
+                async for m in client.iter_messages(target_chat, limit=100):
+                    if m.sender_id == target_user.id:
+                        target_msg = m
+                        break
 
-            if not target_msg:
-                return
+                if not target_msg:
+                    return
 
-            # Execute sequence directly on that message
-            await execute_bkr_sequence(client, target_chat, target_msg.id)
+                await execute_bkr_sequence(client, target_chat, target_msg.id)
+            except asyncio.CancelledError:
+                pass
 
-        asyncio.create_task(scheduled_snipe_task())
+        t = asyncio.create_task(scheduled_snipe_task())
+        ACTIVE_ADVROB_TASKS.append(t)
