@@ -71,9 +71,11 @@ CMD_MANUAL = {
     "cron": "Atomic precision scheduled dispatch (.cron HH:MM:SS.mmm AM/PM | target | msg).",
     "bkr": "Auto-stealth baka game runner (bal -> kill -> rob loop).",
     "gcm": "Auto-snipe target user: trigger .bkr automatically when they message (.gcm user | .ungcm user).",
+    "advrob": "Scheduled BKR: trigger .bkr on target latest message at exact time (.advrob user | time | chat).",
     "cron": "Atomic precision scheduled dispatch (.cron HH:MM:SS.mmm AM/PM | target | msg).",
     "bkr": "Auto-stealth baka game runner (bal -> kill -> rob loop).",
     "gcm": "Auto-snipe target user: trigger .bkr automatically when they message (.gcm user | .ungcm user).",
+    "advrob": "Scheduled BKR: trigger .bkr on target latest message at exact time (.advrob user | time | chat).",
 }
 
 def setup(client):
@@ -210,9 +212,11 @@ def setup(client):
             "╠─ 50. .cron          :: Atomic ms-precision scheduled dispatch\n"
             "╠─ 51. .bkr           :: Auto-stealth Baka bot hunt & rob loop\n"
             "╠─ 52. .gcm           :: Auto-sniper: auto .bkr on target arrival\n"
+            "╠─ 53. .advrob        :: Timed BKR: auto-find target msg & bkr at HH:MM:SS\n"
             "╠─ 50. .cron          :: Atomic ms-precision scheduled dispatch\n"
             "╠─ 51. .bkr           :: Auto-stealth Baka bot hunt & rob loop\n"
             "╠─ 52. .gcm           :: Auto-sniper: auto .bkr on target arrival\n"
+            "╠─ 53. .advrob        :: Timed BKR: auto-find target msg & bkr at HH:MM:SS\n"
             "║\n"
             "╚═════════════「 ⚡️ 𝗖𝗬𝗕𝗘𝗥-𝗘𝗫𝗘𝗖 ⚡️ 」═════════════╝\n"
             "```"
