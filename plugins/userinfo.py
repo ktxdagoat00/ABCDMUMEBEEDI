@@ -2,7 +2,9 @@ import asyncio
 from telethon import events
 from telethon.tl.types import User
 
-SANGMATA_BOTS = ["SangMataInfo_bot", "SangMata_Beta_bot"]
+# Exact primary bot target
+PRIMARY_BOT = "SangMata_BOT"
+BACKUP_BOTS = ["SangMata_Beta_bot", "SangMataInfo_bot"]
 
 def build_native_fallback_card(user: User, note="Sangmata Daily Quota Reached / Busy"):
     first = getattr(user, 'first_name', '') or 'None'
@@ -59,42 +61,55 @@ def setup(client):
             return
 
         target_id = target_entity.id
-        await event.edit("```text\n[~] Querying user history...\n```")
+        await event.edit("```text\n[~] Querying @SangMata_BOT history...\n```")
 
-        # 1. Query Sangmata Bot
         sangmata_response = None
-        for s_bot in SANGMATA_BOTS:
+        bot_list = [PRIMARY_BOT] + BACKUP_BOTS
+
+        for bot in bot_list:
             try:
-                async with client.conversation(s_bot, timeout=5) as conv:
-                    # Send solely target numeric ID
-                    query_msg = await conv.send_message(str(target_id))
+                async with client.conversation(bot, timeout=6) as conv:
+                    # Sirf numeric user id send karni hai
+                    await conv.send_message(str(target_id))
+                    
+                    # Wait for primary response
                     resp = await conv.get_response()
                     txt = resp.raw_text or ""
-
-                    # Quota / Error keywords detection
                     lower_txt = txt.lower()
-                    if any(w in lower_txt for w in ["limit", "quota", "exceeded", "try again tomorrow", "busy"]):
+
+                    # Check for quota exhausted or flood wait
+                    if any(w in lower_txt for w in ["limit", "quota", "exceeded", "try again", "busy", "cooldown"]):
                         continue
-                    if "user" in lower_txt or "name" in lower_txt or "history" in lower_txt or str(target_id) in txt:
-                        sangmata_response = txt
+
+                    # Sangmata can send history in 1 or 2 parts, gather if available
+                    collected_texts = [txt]
+                    try:
+                        second_resp = await asyncio.wait_for(conv.get_response(), timeout=1.5)
+                        if second_resp and second_resp.raw_text:
+                            collected_texts.append(second_resp.raw_text)
+                    except asyncio.TimeoutError:
+                        pass
+
+                    sangmata_response = "\n\n".join(collected_texts)
+                    if sangmata_response:
                         break
             except Exception:
                 continue
 
-        # 2. Render Sangmata response if obtained cleanly
+        # Output result
         if sangmata_response:
             formatted_card = (
                 "```text\n"
-                "╔═════「 👤 USER HISTORY (SANGMATA) 」═════╗\n"
+                "╔═════「 👤 USER HISTORY (@SangMata_BOT) 」═════╗\n"
                 "║\n"
-                f"{sangmata_response}\n"
+                f"{sangmata_response.strip()}\n"
                 "║\n"
-                "╚══════════════════════════════════════════╝\n"
+                "╚═══════════════════════════════════════════════╝\n"
                 "```"
             )
             await event.edit(formatted_card)
             return
 
-        # 3. Quota exhausted or no response -> Trigger native detailed fallback
-        fallback_card = build_native_fallback_card(target_entity, note="Sangmata Quota Over / Fallback Active")
+        # Quota Over ya No Response ke case me Fallback
+        fallback_card = build_native_fallback_card(target_entity, note="SangMata Limit Reached / Fallback Mode")
         await event.edit(fallback_card)
