@@ -15,10 +15,7 @@ COIN_PATTERNS = (
 )
 
 TARGET_WATCHLIST = {}
-# Active scheduled tasks list for .stopadv
 ACTIVE_ADVROB_TASKS = []
-
-# Indian Standard Time (UTC + 5:30)
 IST = timezone(timedelta(hours=5, minutes=30))
 
 def clean_text(text):
@@ -51,8 +48,20 @@ def extract_coins(raw_text):
             return value
     return None
 
+async def safe_cleanup(client, chat, message_ids, delay=1.5):
+    """Safely delete sent commands and intermediate bot messages."""
+    await asyncio.sleep(delay)
+    try:
+        valid_ids = [m for m in message_ids if m]
+        if valid_ids:
+            await client.delete_messages(chat, valid_ids)
+    except Exception:
+        pass
+
 async def execute_bkr_sequence(client, chat, target_msg_id):
-    """Core Bal -> Kill -> Rob sequence executed on target_msg_id."""
+    """Bal -> Kill -> Rob sequence with auto-deletion of sent commands."""
+    sent_to_delete = []
+
     async def wait_response(cmd_msg, keywords=()):
         for _ in range(WAIT_TRIES):
             await asyncio.sleep(WAIT_DELAY)
@@ -67,40 +76,43 @@ async def execute_bkr_sequence(client, chat, target_msg_id):
                 return msg
         return None
 
-    # 1. /bal on target
+    # 1. Dispatch /bal
     bal_msg = await client.send_message(chat, "/bal", reply_to=target_msg_id)
+    sent_to_delete.append(bal_msg.id)
+
     bal_resp = await wait_response(bal_msg, ("coin", "$", "status"))
     if not bal_resp:
+        asyncio.create_task(safe_cleanup(client, chat, sent_to_delete))
         return
 
     bal_content = clean_text(bal_resp.raw_text)
-
-    # 2. Check Status -> Alive
     if "alive" not in bal_content:
+        asyncio.create_task(safe_cleanup(client, chat, sent_to_delete))
         return
 
-    # 3. Read coins
     coins = extract_coins(bal_resp.raw_text)
 
-    # 4. /kill on target
+    # 2. Dispatch /kill
     kill_msg = await client.send_message(chat, "/kill", reply_to=target_msg_id)
+    sent_to_delete.append(kill_msg.id)
+
     kill_resp = await wait_response(kill_msg)
-
-    # 5. Check Protection -> If protected then stop
     if kill_resp and "protect" in clean_text(kill_resp.raw_text):
+        asyncio.create_task(safe_cleanup(client, chat, sent_to_delete))
         return
 
-    # 6. /rob with exact coins (Max 10000)
-    if not coins or coins <= 0:
-        return
+    # 3. Dispatch /rob
+    if coins and coins > 0:
+        rob_amount = min(coins, MAX_ROB)
+        await asyncio.sleep(0.2)
+        rob_msg = await client.send_message(chat, f"/rob {rob_amount}", reply_to=target_msg_id)
+        sent_to_delete.append(rob_msg.id)
 
-    rob_amount = min(coins, MAX_ROB)
-    await asyncio.sleep(0.2)
-    await client.send_message(chat, f"/rob {rob_amount}", reply_to=target_msg_id)
+    # Clean up outgoing /bal, /kill, /rob commands
+    asyncio.create_task(safe_cleanup(client, chat, sent_to_delete, delay=2.5))
 
 def setup(client):
 
-    # Manual trigger on reply: .bkr
     @client.on(events.NewMessage(outgoing=True, pattern=r'^\.bkr$'))
     async def baka_manual_rob(event):
         reply = await event.get_reply_message()
@@ -111,7 +123,6 @@ def setup(client):
         await event.delete()
         await execute_bkr_sequence(client, chat, target_msg_id)
 
-    # Target Watcher: .gcm <user>
     @client.on(events.NewMessage(outgoing=True, pattern=r'^\.gcm(?:\s+(.+))?'))
     async def add_gcm_target(event):
         target_user = None
@@ -128,14 +139,14 @@ def setup(client):
                     return
 
         if not target_user:
-            await event.edit("```text\n[!] Usage: .gcm @username (or reply to msg)\n```")
+            await event.edit("```text\n[!] Usage: .gcm @username\n```")
             return
 
         chat_id = event.chat_id
         if chat_id not in TARGET_WATCHLIST:
             TARGET_WATCHLIST[chat_id] = set()
         TARGET_WATCHLIST[chat_id].add(target_user.id)
-        await event.edit(f"```text\n[✓] Locked Target: {getattr(target_user, 'first_name', '')} ({target_user.id}) for auto .bkr\n```")
+        await event.edit(f"```text\n[✓] Locked Target: {getattr(target_user, 'first_name', '')} ({target_user.id})\n```")
 
     @client.on(events.NewMessage(outgoing=True, pattern=r'^\.ungcm(?:\s+(.+))?'))
     async def remove_gcm_target(event):
@@ -155,7 +166,7 @@ def setup(client):
 
         if chat_id in TARGET_WATCHLIST and target_id in TARGET_WATCHLIST[chat_id]:
             TARGET_WATCHLIST[chat_id].remove(target_id)
-            await event.edit(f"```text\n[✓] Released target {target_id} from watchlist.\n```")
+            await event.edit(f"```text\n[✓] Released target {target_id}.\n```")
         else:
             await event.edit("```text\n[!] Target not found in watchlist.\n```")
 
@@ -168,18 +179,16 @@ def setup(client):
             chat_input = await event.get_input_chat()
             await execute_bkr_sequence(client, chat_input, event.id)
 
-    # Cancel All Scheduled Tasks: .stopadv
     @client.on(events.NewMessage(outgoing=True, pattern=r'^\.stopadv$'))
     async def stop_all_advrob(event):
-        cancelled_count = 0
+        cancelled = 0
         for task in ACTIVE_ADVROB_TASKS:
             if not task.done():
                 task.cancel()
-                cancelled_count += 1
+                cancelled += 1
         ACTIVE_ADVROB_TASKS.clear()
-        await event.edit(f"```text\n[✓] Successfully terminated {cancelled_count} scheduled .advrob task(s)!\n```")
+        await event.edit(f"```text\n[✓] Cancelled {cancelled} scheduled .advrob task(s)!\n```")
 
-    # Advanced Scheduled Rob: .advrob <user> | <time> | <chatid/here>
     @client.on(events.NewMessage(outgoing=True, pattern=r'^\.advrob\s+(.+)'))
     async def adv_rob_schedule(event):
         raw_args = event.pattern_match.group(1).strip()
@@ -191,7 +200,7 @@ def setup(client):
                 time_arg = f"{space_parts[1]} {space_parts[2]}"
                 chat_arg = space_parts[3]
             else:
-                await event.edit("```text\n[!] Usage:\n.advrob <user> | <HH:MM:SS AM/PM> | <chat_id/here>\nExample:\n.advrob @target | 10:10:12 PM | -1001234567890\n```")
+                await event.edit("```text\n[!] Usage: .advrob <user> | <HH:MM:SS AM/PM> | <chat_id/here>\n```")
                 return
         else:
             target_arg = parts[0]
@@ -204,7 +213,7 @@ def setup(client):
             else:
                 target_user = await client.get_entity(target_arg)
         except Exception as e:
-            await event.edit(f"```text\n[!] Target user not found: {e}\n```")
+            await event.edit(f"```text\n[!] Target not found: {e}\n```")
             return
 
         try:
@@ -218,7 +227,6 @@ def setup(client):
             await event.edit(f"```text\n[!] Target chat not found: {e}\n```")
             return
 
-        # Parse Time in IST (Indian Standard Time)
         now_ist = datetime.now(IST)
         target_dt = None
         for fmt in ("%I:%M:%S %p", "%I:%M %p", "%H:%M:%S", "%H:%M"):
@@ -233,13 +241,10 @@ def setup(client):
             await event.edit("```text\n[!] Invalid time format. Use HH:MM:SS AM/PM\n```")
             return
 
-        # Agar time 1 minute se pehle ka nikal chuka hai tabhi agle din karega, warna aaj hi trigger hoga
         if (target_dt - now_ist).total_seconds() < -30:
             target_dt += timedelta(days=1)
 
-        diff = (target_dt - now_ist).total_seconds()
-        if diff < 0:
-            diff = 0
+        diff = max(0, (target_dt - now_ist).total_seconds())
 
         status_card = (
             "```text\n"
@@ -248,7 +253,7 @@ def setup(client):
             f"╠─ 🎯 TARGET :: {getattr(target_user, 'first_name', '')} ({target_user.id})\n"
             f"╠─ 🕒 TIME   :: {target_dt.strftime('%I:%M:%S %p')} (IST)\n"
             f"╠─ ⏳ REMAIN :: {int(diff)}s remaining\n"
-            "╠─ ⚡ ACTION :: Auto-scan latest msg & .bkr\n"
+            "╠─ ⚡ ACTION :: Auto-scan latest msg & .bkr (auto-clean)\n"
             "╠─ 🛑 CANCEL :: .stopadv\n"
             "║\n"
             "╚═══════════════════════════════════════╝\n"
@@ -256,14 +261,12 @@ def setup(client):
         )
         await event.edit(status_card)
 
-        # Background Task
         async def scheduled_snipe_task():
             try:
                 wait_sec = (target_dt - datetime.now(IST)).total_seconds()
                 if wait_sec > 0:
                     await asyncio.sleep(wait_sec)
 
-                # Scan chat for latest message from target
                 target_msg = None
                 async for m in client.iter_messages(target_chat, limit=100):
                     if m.sender_id == target_user.id:
