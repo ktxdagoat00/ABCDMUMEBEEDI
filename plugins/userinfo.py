@@ -2,14 +2,9 @@ import asyncio
 from telethon import events
 from telethon.tl.types import User
 
-# Mirrors list taaki agar ek busy/down/quota ho toh turant dusre se fetch ho sake
-SANGMATA_BOTS = [
-    "SangMata_BOT",
-    "SangMataInfo_bot",
-    "Sangmata_beta_bot"
-]
+TARGET_BOTS = ["SangMata_BOT", "SangMata_beta_bot"]
 
-def build_native_fallback_card(user: User, note="Sangmata Daily Quota Reached / Busy"):
+def build_native_fallback_card(user: User, note="SangMata Quota Limit / No History"):
     first = getattr(user, 'first_name', '') or 'None'
     last = getattr(user, 'last_name', '') or ''
     full_name = f"{first} {last}".strip()
@@ -64,74 +59,64 @@ def setup(client):
             return
 
         target_id = target_entity.id
-        await event.edit("```text\n[~] Fetching name & username history from SangMata...\n```")
+        await event.edit("```text\n[~] Fetching history from @SangMata_BOT...\n```")
 
-        sangmata_response = None
+        sangmata_final_text = None
 
-        for bot_username in SANGMATA_BOTS:
+        for bot_username in TARGET_BOTS:
             try:
                 bot_entity = await client.get_input_entity(bot_username)
-                
-                # Step 1: Ensure bot chat is initialized with /start if needed
-                async with client.conversation(bot_entity, timeout=7) as conv:
-                    # Send /start first to wake up bot session
-                    await conv.send_message("/start")
-                    try:
-                        # Flush initial start welcome message
-                        await asyncio.wait_for(conv.get_response(), timeout=1.5)
-                    except Exception:
-                        pass
-
-                    # Step 2: Send solely the target User ID
+                async with client.conversation(bot_entity, timeout=10) as conv:
+                    # Sirf plain numeric user ID bhejni hai, kuch aur nahi
                     query_msg = await conv.send_message(str(target_id))
 
-                    collected_messages = []
-                    # Wait up to 5 seconds to collect all parts (Name history + Username history)
+                    gathered_messages = []
+                    # Bot replies ko listen karo (searchis/searching ko ignore karo)
                     for _ in range(4):
                         try:
-                            resp = await asyncio.wait_for(conv.get_response(), timeout=2.0)
+                            resp = await asyncio.wait_for(conv.get_response(), timeout=3.5)
                             txt = resp.raw_text or ""
                             low = txt.lower()
 
-                            # Quota check
-                            if any(w in low for w in ["limit", "quota", "exceeded", "try again", "busy"]):
-                                collected_messages = []
-                                break
-                            
-                            # Filter out placeholder search messages
-                            if "searching" in low or "please wait" in low:
+                            # Agar intermediate status message hai, skip karo
+                            if any(k in low for k in ["search", "please wait", "processing"]):
                                 continue
 
-                            collected_messages.append(txt)
+                            # Agar quota limit ya wait alert hai
+                            if any(k in low for k in ["limit", "quota", "exceeded", "cooldown"]):
+                                break
+
+                            gathered_messages.append(txt)
+                            
+                            # Agar bot ne username aur name history bhej di
+                            if len(gathered_messages) >= 2:
+                                break
                         except asyncio.TimeoutError:
                             break
 
-                    if collected_messages:
-                        combined = "\n\n".join(collected_messages).strip()
-                        # Make sure it actually has history or user info
-                        if str(target_id) in combined or "name" in combined.lower() or "username" in combined.lower():
-                            sangmata_response = combined
-                            break
+                    if gathered_messages:
+                        sangmata_final_text = "\n\n".join(gathered_messages)
+                        break
             except Exception:
                 continue
 
-        # If history fetched cleanly
-        if sangmata_response:
-            formatted_card = (
+        # Agar result mil gaya to print karo
+        if sangmata_final_text:
+            output_card = (
                 "```text\n"
-                "╔═════「 👤 USER HISTORY (SANGMATA) 」═════╗\n"
+                "╔═════「 👤 USER HISTORY (@SangMata_BOT) 」═════╗\n"
                 "║\n"
-                f"{sangmata_response}\n"
+                f"{sangmata_final_text.strip()}\n"
                 "║\n"
-                "╚══════════════════════════════════════════╝\n"
+                "╚═══════════════════════════════════════════════╝\n"
                 "```"
             )
-            await event.edit(formatted_card)
+            await event.edit(output_card)
             return
 
-        # If quota is finished or bot is silent -> Native profile details
+        # Quota exceed hone par ya result na milne par native card
         fallback_card = build_native_fallback_card(
-            target_entity, 
-            note="No Sangmata history / Daily quota reached"
+            target_entity,
+            note="SangMata Quota Exceeded / History Not Found"
         )
         await event.edit(fallback_card)
