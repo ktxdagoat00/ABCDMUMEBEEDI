@@ -73,11 +73,15 @@ CMD_MANUAL = {
     "gcm": "Auto-snipe target user: trigger .bkr automatically when they message (.gcm user | .ungcm user).",
     "advrob": "Scheduled BKR: trigger .bkr on target latest message at exact time (.advrob user | time | chat).",
     "stopadv": "Terminate all active scheduled .advrob tasks.",
+    "purge": "Bulk purge messages (reply to start point or specify count: .purge 50).",
+    "del": "Instantly delete the replied message.",
     "cron": "Atomic precision scheduled dispatch (.cron HH:MM:SS.mmm AM/PM | target | msg).",
     "bkr": "Auto-stealth baka game runner (bal -> kill -> rob loop).",
     "gcm": "Auto-snipe target user: trigger .bkr automatically when they message (.gcm user | .ungcm user).",
     "advrob": "Scheduled BKR: trigger .bkr on target latest message at exact time (.advrob user | time | chat).",
     "stopadv": "Terminate all active scheduled .advrob tasks.",
+    "purge": "Bulk purge messages (reply to start point or specify count: .purge 50).",
+    "del": "Instantly delete the replied message.",
 }
 
 def setup(client):
@@ -216,11 +220,15 @@ def setup(client):
             "╠─ 52. .gcm           :: Auto-sniper: auto .bkr on target arrival\n"
             "╠─ 53. .advrob        :: Timed BKR: auto-find target msg & bkr at HH:MM:SS\n"
             "╠─ 54. .stopadv       :: Cancel all running .advrob scheduled tasks\n"
+            "╠─ 55. .purge         :: Deep sweep delete (reply to start point or .purge 100)\n"
+            "╠─ 56. .del           :: Quick delete replied target message\n"
             "╠─ 50. .cron          :: Atomic ms-precision scheduled dispatch\n"
             "╠─ 51. .bkr           :: Auto-stealth Baka bot hunt & rob loop\n"
             "╠─ 52. .gcm           :: Auto-sniper: auto .bkr on target arrival\n"
             "╠─ 53. .advrob        :: Timed BKR: auto-find target msg & bkr at HH:MM:SS\n"
             "╠─ 54. .stopadv       :: Cancel all running .advrob scheduled tasks\n"
+            "╠─ 55. .purge         :: Deep sweep delete (reply to start point or .purge 100)\n"
+            "╠─ 56. .del           :: Quick delete replied target message\n"
             "║\n"
             "╚═════════════「 ⚡️ 𝗖𝗬𝗕𝗘𝗥-𝗘𝗫𝗘𝗖 ⚡️ 」═════════════╝\n"
             "```"
