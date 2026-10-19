@@ -1,71 +1,97 @@
 import os
-import sys
-import glob
 import asyncio
-import logging
-import importlib.util
+from aiohttp import web
 from telethon import TelegramClient
 from telethon.sessions import StringSession
-from aiohttp import web
 
-# Performance logging
-logging.basicConfig(level=logging.WARNING)
+# Load environment credentials
+API_ID = os.environ.get("API_ID")
+API_HASH = os.environ.get("API_HASH")
 
-API_ID = int(os.environ.get("API_ID", 0))
-API_HASH = os.environ.get("API_HASH", "")
-SESSION_STRING = os.environ.get("SESSION_STRING", "")
+if not API_ID or not API_HASH:
+    if os.path.exists(".env"):
+        with open(".env", "r") as f:
+            for line in f:
+                if line.startswith("API_ID="):
+                    API_ID = line.split("=", 1)[1].strip("'\" \n")
+                elif line.startswith("API_HASH="):
+                    API_HASH = line.split("=", 1)[1].strip("'\" \n")
 
-if not API_ID or not API_HASH or not SESSION_STRING:
-    print("[FATAL] Environment variables missing!")
-    sys.exit(1)
+if API_ID:
+    API_ID = int(API_ID)
 
-client = TelegramClient(StringSession(SESSION_STRING), API_ID, API_HASH)
+# Collect all available string sessions from environment (.env or Render env vars)
+sessions = []
+# Session 1
+s1 = os.environ.get("STRING_SESSION") or os.environ.get("SESSION_1")
+if s1: sessions.append(s1)
 
-def load_plugins():
-    plugin_files = glob.glob("plugins/*.py")
-    for file_path in plugin_files:
-        name = os.path.splitext(os.path.basename(file_path))[0]
-        if name.startswith("__"):
-            continue
-        try:
-            spec = importlib.util.spec_from_file_location(f"plugins.{name}", file_path)
-            mod = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(mod)
-            if hasattr(mod, "setup"):
-                mod.setup(client)
-            print(f"[+] Loaded plugin: {name}")
-        except Exception as e:
-            print(f"[-] Error loading plugin {name}: {e}")
+# Session 2
+s2 = os.environ.get("STRING_SESSION_2") or os.environ.get("SESSION_2")
+if s2: sessions.append(s2)
 
-async def health_check(request):
-    return web.Response(text="Bot Engine Running 24/7 at Peak Speed!")
+# Session 3
+s3 = os.environ.get("STRING_SESSION_3") or os.environ.get("SESSION_3")
+if s3: sessions.append(s3)
+
+print(f"[✓] Loaded {len(sessions)} active Telegram session(s).")
+
+clients = []
+if s1: clients.append(TelegramClient(StringSession(s1), API_ID, API_HASH))
+if s2: clients.append(TelegramClient(StringSession(s2), API_ID, API_HASH))
+if s3: clients.append(TelegramClient(StringSession(s3), API_ID, API_HASH))
+
+# Load plugins dynamically for all active clients
+import glob
+import importlib
+from pathlib import Path
+
+def load_plugins_for_client(client):
+    path = "plugins/*.py"
+    files = glob.glob(path)
+    for name in files:
+        with open(name, "r") as f:
+            code = f.read()
+        # Avoid syntax errors or empty plugins
+        if "def setup(client):" in code:
+            mod_name = Path(name).stem
+            try:
+                module = importlib.import_module(f"plugins.{mod_name}")
+                if hasattr(module, "setup"):
+                    module.setup(client)
+            except Exception as e:
+                print(f"[!] Error loading plugin {mod_name}: {e}")
+
+# Simple web server to satisfy Render port binding requirement
+async def handle_ping(request):
+    return web.Response(text="Bot running at high speed 24/7!")
 
 async def start_web_server():
     app = web.Application()
-    app.router.add_get("/", health_check)
+    app.router.add_get("/", handle_ping)
     runner = web.AppRunner(app)
     await runner.setup()
-    port = int(os.environ.get("PORT", 8080))
+    port = int(os.environ.get("PORT", 10000))
     site = web.TCPSite(runner, "0.0.0.0", port)
     await site.start()
-    print(f"[+] Web engine bound to port {port}")
+    print(f"[✓] Web server bound successfully on port {port}")
 
 async def main():
-    await client.start()
-    load_plugins()
+    if not clients:
+        print("[!] Error: No sessions found! Please set STRING_SESSION in environment or .env")
+        return
+
+    # Start all clients and load plugins
+    for client in clients:
+        load_plugins_for_client(client)
+        await client.start()
+        print(f"[✓] Client connected successfully!")
+
+    # Start background keep-alive web server
     await start_web_server()
-    print("[+] Master Userbot Online & Multitasking Active!")
-    
-    # Auto-Reconnection & Crash Guard Watchdog
-    while True:
-        try:
-            if not client.is_connected():
-                print("[!] Reconnecting client...")
-                await client.connect()
-            await asyncio.sleep(15)
-        except Exception as e:
-            print(f"[Watchdog Error] {e}")
-            await asyncio.sleep(5)
+
+    # Run all clients concurrently until disconnected
+    await asyncio.gather(*(client.run_until_disconnected() for client in clients))
 
 if __name__ == "__main__":
     asyncio.run(main())
