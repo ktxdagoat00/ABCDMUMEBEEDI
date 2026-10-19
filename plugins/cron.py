@@ -43,7 +43,6 @@ def setup(client):
                 time_part = parts[0]
                 ampm_part = parts[1] if len(parts) > 1 else ""
 
-                # Agar AM/PM sath me chipka hai (jaise 9:00PM)
                 if time_raw.endswith("PM") or time_raw.endswith("AM"):
                     if time_raw.endswith("PM"):
                         ampm_part = "PM"
@@ -59,7 +58,6 @@ def setup(client):
                     hms = time_part
                     ms = 0
 
-                # Agar sirf hours/minutes diye hain (jaise 9:00) toh seconds 0 maan lo
                 hms_parts = hms.split(":")
                 if len(hms_parts) == 2:
                     hms = f"{hms}:00"
@@ -82,9 +80,9 @@ def setup(client):
                 await event.edit(f"```text\n[!] Time error: {e}\nTry: .cron 9:00 PM here Giveaway Msg!\n```")
                 return
 
-        # Target Resolution (Supports here, username, ID, and Channel Post Links for comments)
+        # Target Resolution (Supports 'here', username, ID, and Message Links for Auto-Reply)
         target_dest = None
-        comment_msg_id = None
+        reply_msg_id = None
         dest_label = target_raw
 
         try:
@@ -92,17 +90,24 @@ def setup(client):
                 target_dest = event.chat_id
                 dest_label = "Current Chat"
             elif "t.me/" in target_raw:
-                # Channel post link handling for comments: https://t.me/channelname/123
+                # Private/Public Message Link for replying directly to a target message
                 clean_link = target_raw.split("t.me/")[-1].strip("/")
                 parts = clean_link.split("/")
-                if len(parts) >= 2:
-                    channel_username = parts[0]
-                    comment_msg_id = int(parts[1])
-                    entity = await client.get_input_entity(channel_username)
-                    target_dest = entity
-                    dest_label = f"Comment on @{channel_username} (Post #{comment_msg_id})"
+                
+                if parts[0] == "c" and len(parts) >= 3:
+                    # Private group link: https://t.me/c/1234567890/500
+                    internal_chat_id = int("-100" + parts[1])
+                    reply_msg_id = int(parts[2])
+                    target_dest = await client.get_input_entity(internal_chat_id)
+                    dest_label = f"Reply to Msg #{reply_msg_id} in Chat ID {internal_chat_id}"
+                elif len(parts) >= 2:
+                    # Public group link: https://t.me/groupusername/500
+                    group_username = parts[0]
+                    reply_msg_id = int(parts[1])
+                    target_dest = await client.get_input_entity(group_username)
+                    dest_label = f"Reply to Msg #{reply_msg_id} in @{group_username}"
                 else:
-                    raise ValueError("Invalid Telegram post link format")
+                    raise ValueError("Invalid Message Link format")
             elif target_raw.lstrip("-").isdigit():
                 target_dest = int(target_raw)
             else:
@@ -128,7 +133,7 @@ def setup(client):
         )
         await event.edit(card)
 
-        # Ultra-Fast Zero-Lag Background Dispatcher with Spin-Lock
+        # High-Precision Atomic Dispatcher
         async def atomic_dispatcher():
             try:
                 target_epoch = target_dt.timestamp()
@@ -140,12 +145,11 @@ def setup(client):
                     if remaining > 0.15:
                         await asyncio.sleep(remaining - 0.05)
                     else:
-                        # Sub-millisecond tight spin lock for ultimate speed
                         await asyncio.sleep(0.0001)
 
-                # Send message or post comment instantly
-                if comment_msg_id:
-                    await client.send_message(target_dest, message_to_send, reply_to=comment_msg_id)
+                # Send message or Reply to specific message ID
+                if reply_msg_id:
+                    await client.send_message(target_dest, message_to_send, reply_to=reply_msg_id)
                 else:
                     await client.send_message(target_dest, message_to_send)
 
