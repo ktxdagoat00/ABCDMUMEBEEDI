@@ -7,7 +7,7 @@ IST = timezone(timedelta(hours=5, minutes=30))
 
 def setup(client):
 
-    @client.on(events.NewMessage(outgoing=True, pattern=r'^\.cron\s+([^|]+)\|([^|]+)\|(.+)'))
+    @client.on(events.NewMessage(outgoing=True, pattern=r'^\.cron\s+(?:at\s+)?([^\s]+(?:\s+[^\s]+){0,2})\s+([^\s]+)\s+(.+)'))
     async def precision_cron(event):
         time_raw = event.pattern_match.group(1).strip()
         target_raw = event.pattern_match.group(2).strip()
@@ -33,14 +33,24 @@ def setup(client):
                     raise ValueError("Unknown unit")
                 target_dt = now_ist + timedelta(seconds=val)
             except Exception:
-                await event.edit("```text\n[!] Invalid format. Try: .cron in 10s | here | msg\n```")
+                await event.edit("```text\n[!] Format error. Try: .cron in 10s here Giveaway Msg!\n```")
                 return
         else:
-            # Mode B: Exact Clock Time with Milliseconds (e.g., 03:30:00.500 PM)
+            # Mode B: Flexible Clock Time (e.g., 9:00 PM, 03:30:00.500 PM)
             try:
+                time_raw = time_raw.upper()
                 parts = time_raw.split()
                 time_part = parts[0]
-                ampm_part = parts[1].upper() if len(parts) > 1 else ""
+                ampm_part = parts[1] if len(parts) > 1 else ""
+
+                # Agar AM/PM sath me chipka hai (jaise 9:00PM)
+                if time_raw.endswith("PM") or time_raw.endswith("AM"):
+                    if time_raw.endswith("PM"):
+                        ampm_part = "PM"
+                        time_part = time_raw[:-2]
+                    else:
+                        ampm_part = "AM"
+                        time_part = time_raw[:-2]
 
                 if "." in time_part:
                     hms, ms_str = time_part.split(".", 1)
@@ -48,6 +58,11 @@ def setup(client):
                 else:
                     hms = time_part
                     ms = 0
+
+                # Agar sirf hours/minutes diye hain (jaise 9:00) toh seconds 0 maan lo
+                hms_parts = hms.split(":")
+                if len(hms_parts) == 2:
+                    hms = f"{hms}:00"
 
                 time_str = f"{hms} {ampm_part}".strip()
                 fmt = "%I:%M:%S %p" if ampm_part else "%H:%M:%S"
@@ -64,25 +79,44 @@ def setup(client):
                     target_dt += timedelta(days=1)
 
             except Exception as e:
-                await event.edit(f"```text\n[!] Time format error: {e}\nTry: .cron 03:30:00.000 PM | here | msg\n```")
+                await event.edit(f"```text\n[!] Time error: {e}\nTry: .cron 9:00 PM here Giveaway Msg!\n```")
                 return
 
-        # Safe Target Resolution
-        if target_raw.lower() == "here":
-            target_dest = event.chat_id
-            dest_label = "Current Chat"
-        else:
-            try:
-                target_dest = int(target_raw)
-            except ValueError:
-                target_dest = target_raw
-            dest_label = str(target_dest)
+        # Target Resolution (Supports here, username, ID, and Channel Post Links for comments)
+        target_dest = None
+        comment_msg_id = None
+        dest_label = target_raw
 
-        wait_sec = (target_dt - datetime.now(IST)).total_seconds()
+        try:
+            if target_raw.lower() == "here":
+                target_dest = event.chat_id
+                dest_label = "Current Chat"
+            elif "t.me/" in target_raw:
+                # Channel post link handling for comments: https://t.me/channelname/123
+                clean_link = target_raw.split("t.me/")[-1].strip("/")
+                parts = clean_link.split("/")
+                if len(parts) >= 2:
+                    channel_username = parts[0]
+                    comment_msg_id = int(parts[1])
+                    entity = await client.get_input_entity(channel_username)
+                    target_dest = entity
+                    dest_label = f"Comment on @{channel_username} (Post #{comment_msg_id})"
+                else:
+                    raise ValueError("Invalid Telegram post link format")
+            elif target_raw.lstrip("-").isdigit():
+                target_dest = int(target_raw)
+            else:
+                entity = await client.get_input_entity(target_raw)
+                target_dest = entity
+        except Exception as e:
+            await event.edit(f"```text\n[!] Target resolution failed: {e}\n```")
+            return
+
+        wait_sec = (target_dt - now_ist).total_seconds()
 
         card = (
             "```text\n"
-            "╔════「 ⚡ ATOMIC MS-ACCURATE SCHEDULER ⚡ 」════╗\n"
+            "╔════「 ⚡ GIVEAWAY ATOMIC SNIPER ⚡ 」════╗\n"
             "║\n"
             "╠─ 👤 MASTER   :: K E S H A V\n"
             f"╠─ 🎯 TARGET   :: {dest_label}\n"
@@ -94,28 +128,28 @@ def setup(client):
         )
         await event.edit(card)
 
-        # Zero-Lag Background Dispatcher with High-Precision Spin-Lock
+        # Ultra-Fast Zero-Lag Background Dispatcher with Spin-Lock
         async def atomic_dispatcher():
             try:
-                # System clock base calculation
                 target_epoch = target_dt.timestamp()
 
                 while True:
                     remaining = target_epoch - time.time()
                     if remaining <= 0:
                         break
-                    
-                    # Agar 0.2s se zyaada bacha hai toh loop sleep karega
-                    if remaining > 0.2:
-                        await asyncio.sleep(remaining - 0.1)
+                    if remaining > 0.15:
+                        await asyncio.sleep(remaining - 0.05)
                     else:
-                        # Final 200ms: Micro-sleep for sub-millisecond precision
-                        await asyncio.sleep(0.001)
+                        # Sub-millisecond tight spin lock for ultimate speed
+                        await asyncio.sleep(0.0001)
 
-                # Send instantly on exact microsecond match
-                await client.send_message(target_dest, message_to_send)
+                # Send message or post comment instantly
+                if comment_msg_id:
+                    await client.send_message(target_dest, message_to_send, reply_to=comment_msg_id)
+                else:
+                    await client.send_message(target_dest, message_to_send)
 
             except Exception as err:
-                await client.send_message(command_chat_id, f"```text\n[!] CRON FAILED!\nTarget: {dest_label}\nError: {err}\n```")
+                await client.send_message(command_chat_id, f"```text\n[!] GIVEAWAY SNIPER FAILED!\nError: {err}\n```")
 
         asyncio.create_task(atomic_dispatcher())
