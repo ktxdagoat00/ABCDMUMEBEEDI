@@ -80,7 +80,7 @@ def setup(client):
                 await event.edit(f"```text\n[!] Time error: {e}\nTry: .cron 9:00 PM here Giveaway Msg!\n```")
                 return
 
-        # Target Resolution (Supports 'here', username, ID, and Message Links for Auto-Reply)
+        # Target Resolution with robust error handling & caching bypass
         target_dest = None
         reply_msg_id = None
         dest_label = target_raw
@@ -90,7 +90,6 @@ def setup(client):
                 target_dest = event.chat_id
                 dest_label = "Current Chat"
             elif "t.me/" in target_raw:
-                # Private/Public Message Link for replying directly to a target message
                 clean_link = target_raw.split("t.me/")[-1].strip("/")
                 parts = clean_link.split("/")
                 
@@ -98,23 +97,33 @@ def setup(client):
                     # Private group link: https://t.me/c/1234567890/500
                     internal_chat_id = int("-100" + parts[1])
                     reply_msg_id = int(parts[2])
-                    target_dest = await client.get_input_entity(internal_chat_id)
-                    dest_label = f"Reply to Msg #{reply_msg_id} in Chat ID {internal_chat_id}"
-                elif len(parts) >= 2:
-                    # Public group link: https://t.me/groupusername/500
+                    target_dest = await client.get_entity(internal_chat_id)
+                    dest_label = f"Reply to Msg #{reply_msg_id} (Private Chat)"
+                elif len(parts) >= 2 and not parts[0].lstrip("-").isdigit():
+                    # Public group/username link: https://t.me/groupusername/500
                     group_username = parts[0]
                     reply_msg_id = int(parts[1])
-                    target_dest = await client.get_input_entity(group_username)
+                    target_dest = await client.get_entity(group_username)
                     dest_label = f"Reply to Msg #{reply_msg_id} in @{group_username}"
                 else:
-                    raise ValueError("Invalid Message Link format")
-            elif target_raw.lstrip("-").isdigit():
-                target_dest = int(target_raw)
+                    raise ValueError("Invalid Message Link structure")
             else:
-                entity = await client.get_input_entity(target_raw)
-                target_dest = entity
+                # Handle username (@username) or ID directly
+                if target_raw.startswith("@"):
+                    target_dest = await client.get_entity(target_raw)
+                elif target_raw.lstrip("-").isdigit():
+                    target_dest = int(target_raw)
+                else:
+                    target_dest = await client.get_entity(target_raw)
+                dest_label = str(target_raw)
         except Exception as e:
-            await event.edit(f"```text\n[!] Target resolution failed: {e}\n```")
+            await event.edit(
+                f"```text\n"
+                f"[!] Target resolution failed!\n"
+                f"Reason: {e}\n\n"
+                f"Tip: Make sure the bot account is a member of the group/chat before targeting it.\n"
+                f"```"
+            )
             return
 
         wait_sec = (target_dt - now_ist).total_seconds()
@@ -147,7 +156,6 @@ def setup(client):
                     else:
                         await asyncio.sleep(0.0001)
 
-                # Send message or Reply to specific message ID
                 if reply_msg_id:
                     await client.send_message(target_dest, message_to_send, reply_to=reply_msg_id)
                 else:
