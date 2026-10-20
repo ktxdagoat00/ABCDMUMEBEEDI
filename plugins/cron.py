@@ -7,7 +7,7 @@ IST = timezone(timedelta(hours=5, minutes=30))
 
 def setup(client):
 
-    @client.on(events.NewMessage(outgoing=True, pattern=r'^\.cron\s+(?:at\s+)?([^\s]+(?:\s+[^\s]+){0,2})\s+([^\s]+)\s+(.+)'))
+    @client.on(events.NewMessage(outgoing=True, pattern=r'^\.cron\s+(?:at\s+)?([^\s]+(?:\s+[^\s]+){0,1})\s+([^\s]+)\s+(.+)'))
     async def precision_cron(event):
         time_raw = event.pattern_match.group(1).strip()
         target_raw = event.pattern_match.group(2).strip()
@@ -80,7 +80,7 @@ def setup(client):
                 await event.edit(f"```text\n[!] Time error: {e}\nTry: .cron 9:00 PM here Giveaway Msg!\n```")
                 return
 
-        # Target Resolution with robust error handling & caching bypass
+        # Target Resolution with robust error handling
         target_dest = None
         reply_msg_id = None
         dest_label = target_raw
@@ -94,13 +94,11 @@ def setup(client):
                 parts = clean_link.split("/")
                 
                 if parts[0] == "c" and len(parts) >= 3:
-                    # Private group link: https://t.me/c/1234567890/500
                     internal_chat_id = int("-100" + parts[1])
                     reply_msg_id = int(parts[2])
                     target_dest = await client.get_entity(internal_chat_id)
                     dest_label = f"Reply to Msg #{reply_msg_id} (Private Chat)"
                 elif len(parts) >= 2 and not parts[0].lstrip("-").isdigit():
-                    # Public group/username link: https://t.me/groupusername/500
                     group_username = parts[0]
                     reply_msg_id = int(parts[1])
                     target_dest = await client.get_entity(group_username)
@@ -108,7 +106,6 @@ def setup(client):
                 else:
                     raise ValueError("Invalid Message Link structure")
             else:
-                # Handle username (@username) or ID directly
                 if target_raw.startswith("@"):
                     target_dest = await client.get_entity(target_raw)
                 elif target_raw.lstrip("-").isdigit():
