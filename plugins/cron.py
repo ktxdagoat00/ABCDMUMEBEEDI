@@ -3,6 +3,7 @@ import time
 from datetime import datetime, timedelta, timezone
 from telethon import events
 
+UTC = timezone.utc
 IST = timezone(timedelta(hours=5, minutes=30))
 
 def setup(client):
@@ -14,8 +15,9 @@ def setup(client):
         message_to_send = event.pattern_match.group(3).strip()
         command_chat_id = event.chat_id
 
-        now_ist = datetime.now(IST)
-        target_dt = None
+        now_utc = datetime.now(UTC)
+        now_ist = now_utc.astimezone(IST)
+        target_dt_ist = None
 
         # Mode A: Relative countdown (e.g., in 10s, in 500ms)
         if time_raw.lower().startswith("in "):
@@ -31,7 +33,7 @@ def setup(client):
                     val = float(val_str[:-1]) * 3600.0
                 else:
                     raise ValueError("Unknown unit")
-                target_dt = now_ist + timedelta(seconds=val)
+                target_dt_ist = now_ist + timedelta(seconds=val)
             except Exception:
                 await event.edit("```text\n[!] Format error. Try: .cron in 10s here Giveaway Msg!\n```")
                 return
@@ -66,21 +68,21 @@ def setup(client):
                 fmt = "%I:%M:%S %p" if ampm_part else "%H:%M:%S"
                 parsed = datetime.strptime(time_str, fmt)
 
-                target_dt = now_ist.replace(
+                target_dt_ist = now_ist.replace(
                     hour=parsed.hour,
                     minute=parsed.minute,
                     second=parsed.second,
                     microsecond=ms * 1000
                 )
 
-                if target_dt <= now_ist:
-                    target_dt += timedelta(days=1)
+                if target_dt_ist <= now_ist:
+                    target_dt_ist += timedelta(days=1)
 
             except Exception as e:
                 await event.edit(f"```text\n[!] Time error: {e}\nTry: .cron 9:00 PM @username YourMsg!\n```")
                 return
 
-        # Target Pre-Fetching & Entity Warmup
+        # Target Pre-Fetching
         target_dest = None
         reply_msg_id = None
         dest_label = target_raw
@@ -114,15 +116,10 @@ def setup(client):
                     target_dest = await client.get_input_entity(target_raw)
                 dest_label = str(target_raw)
         except Exception as e:
-            await event.edit(
-                f"```text\n"
-                f"[!] Target resolution failed!\n"
-                f"Reason: {e}\n"
-                f"```"
-            )
+            await event.edit(f"```text\n[!] Target resolution failed: {e}\n```")
             return
 
-        wait_sec = (target_dt - now_ist).total_seconds()
+        wait_sec = (target_dt_ist - now_ist).total_seconds()
 
         card = (
             "```text\n"
@@ -130,7 +127,7 @@ def setup(client):
             "║\n"
             "╠─ 👤 MASTER   :: K E S H A V\n"
             f"╠─ 🎯 TARGET   :: {dest_label}\n"
-            f"╠─ ⏰ EXECUTE  :: {target_dt.strftime('%I:%M:%S.%f')[:-3]} {target_dt.strftime('%p')} (IST)\n"
+            f"╠─ ⏰ EXECUTE  :: {target_dt_ist.strftime('%I:%M:%S.%f')[:-3]} {target_dt_ist.strftime('%p')} (IST)\n"
             f"╠─ ⏳ DELAY    :: {round(max(0, wait_sec), 3)}s remaining\n"
             "║\n"
             "╚════════════════════════════════════════════════╝\n"
@@ -138,36 +135,24 @@ def setup(client):
         )
         await event.edit(card)
 
-        # Zero-Lag Pre-Warmed Atomic Dispatcher
+        # High-Precision Atomic Dispatcher
         async def atomic_dispatcher():
             try:
-                target_epoch = target_dt.timestamp()
+                # Convert Target IST time directly to UTC Epoch Timestamp
+                target_utc = target_dt_ist.astimezone(UTC)
+                target_epoch = target_utc.timestamp()
 
-                # Phase 1: Coarse Sleep until 2 seconds remaining
                 while True:
-                    remaining = target_epoch - time.time()
-                    if remaining <= 2.0:
-                        break
-                    await asyncio.sleep(min(remaining - 1.5, 1.0))
-
-                # Phase 2: Connection Pre-Warming (Ping Telegram servers at target - 1.5s)
-                try:
-                    await client.ping()
-                except Exception:
-                    pass
-
-                # Phase 3: Ultra-Tight Spin Lock (Final Millisecond Sync)
-                while True:
+                    # Direct comparison using system epoch
                     remaining = target_epoch - time.time()
                     if remaining <= 0:
                         break
-                    if remaining > 0.05:
-                        await asyncio.sleep(remaining - 0.01)
+                    if remaining > 0.1:
+                        await asyncio.sleep(remaining - 0.02)
                     else:
-                        # Microsecond precision spin loop
                         await asyncio.sleep(0.0001)
 
-                # Direct Fire using pre-resolved input entity
+                # Fire immediately
                 if reply_msg_id:
                     await client.send_message(target_dest, message_to_send, reply_to=reply_msg_id)
                 else:
