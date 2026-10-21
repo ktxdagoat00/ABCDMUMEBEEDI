@@ -36,7 +36,7 @@ def setup(client):
                 await event.edit("```text\n[!] Format error. Try: .cron in 10s here Giveaway Msg!\n```")
                 return
         else:
-            # Mode B: Flexible Clock Time (e.g., 9:00 PM, 03:30:00.500 PM)
+            # Mode B: Clock Time (e.g., 9:00 PM, 03:30:00.500 PM)
             try:
                 time_raw = time_raw.upper()
                 parts = time_raw.split()
@@ -80,14 +80,14 @@ def setup(client):
                 await event.edit(f"```text\n[!] Time error: {e}\nTry: .cron 9:00 PM @username YourMsg!\n```")
                 return
 
-        # Target Resolution with robust error handling & Message Link reply support
+        # Target Pre-Fetching & Entity Warmup
         target_dest = None
         reply_msg_id = None
         dest_label = target_raw
 
         try:
             if target_raw.lower() == "here":
-                target_dest = event.chat_id
+                target_dest = await client.get_input_entity(event.chat_id)
                 dest_label = "Current Chat"
             elif "t.me/" in target_raw:
                 clean_link = target_raw.split("t.me/")[-1].strip("/")
@@ -96,22 +96,22 @@ def setup(client):
                 if parts[0] == "c" and len(parts) >= 3:
                     internal_chat_id = int("-100" + parts[1])
                     reply_msg_id = int(parts[2])
-                    target_dest = await client.get_entity(internal_chat_id)
+                    target_dest = await client.get_input_entity(internal_chat_id)
                     dest_label = f"Reply to Msg #{reply_msg_id} (Private Chat)"
                 elif len(parts) >= 2 and not parts[0].lstrip("-").isdigit():
                     group_username = parts[0]
                     reply_msg_id = int(parts[1])
-                    target_dest = await client.get_entity(group_username)
+                    target_dest = await client.get_input_entity(group_username)
                     dest_label = f"Reply to Msg #{reply_msg_id} in @{group_username}"
                 else:
                     raise ValueError("Invalid Message Link structure")
             else:
                 if target_raw.startswith("@"):
-                    target_dest = await client.get_entity(target_raw)
+                    target_dest = await client.get_input_entity(target_raw)
                 elif target_raw.lstrip("-").isdigit():
-                    target_dest = int(target_raw)
+                    target_dest = await client.get_input_entity(int(target_raw))
                 else:
-                    target_dest = await client.get_entity(target_raw)
+                    target_dest = await client.get_input_entity(target_raw)
                 dest_label = str(target_raw)
         except Exception as e:
             await event.edit(
@@ -126,7 +126,7 @@ def setup(client):
 
         card = (
             "```text\n"
-            "╔════「 ⚡ GIVEAWAY ATOMIC SNIPER ⚡ 」════╗\n"
+            "╔════「 ⚡ ZERO-LAG ATOMIC SNIPER ⚡ 」════╗\n"
             "║\n"
             "╠─ 👤 MASTER   :: K E S H A V\n"
             f"╠─ 🎯 TARGET   :: {dest_label}\n"
@@ -138,26 +138,42 @@ def setup(client):
         )
         await event.edit(card)
 
-        # High-Precision Atomic Dispatcher
+        # Zero-Lag Pre-Warmed Atomic Dispatcher
         async def atomic_dispatcher():
             try:
                 target_epoch = target_dt.timestamp()
 
+                # Phase 1: Coarse Sleep until 2 seconds remaining
+                while True:
+                    remaining = target_epoch - time.time()
+                    if remaining <= 2.0:
+                        break
+                    await asyncio.sleep(min(remaining - 1.5, 1.0))
+
+                # Phase 2: Connection Pre-Warming (Ping Telegram servers at target - 1.5s)
+                try:
+                    await client.ping()
+                except Exception:
+                    pass
+
+                # Phase 3: Ultra-Tight Spin Lock (Final Millisecond Sync)
                 while True:
                     remaining = target_epoch - time.time()
                     if remaining <= 0:
                         break
-                    if remaining > 0.15:
-                        await asyncio.sleep(remaining - 0.05)
+                    if remaining > 0.05:
+                        await asyncio.sleep(remaining - 0.01)
                     else:
+                        # Microsecond precision spin loop
                         await asyncio.sleep(0.0001)
 
+                # Direct Fire using pre-resolved input entity
                 if reply_msg_id:
                     await client.send_message(target_dest, message_to_send, reply_to=reply_msg_id)
                 else:
                     await client.send_message(target_dest, message_to_send)
 
             except Exception as err:
-                await client.send_message(command_chat_id, f"```text\n[!] GIVEAWAY SNIPER FAILED!\nError: {err}\n```")
+                await client.send_message(command_chat_id, f"```text\n[!] CRON FAILED!\nError: {err}\n```")
 
         asyncio.create_task(atomic_dispatcher())
