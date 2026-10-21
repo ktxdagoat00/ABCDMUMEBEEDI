@@ -1,10 +1,25 @@
 import asyncio
 import time
+import aiohttp
 from datetime import datetime, timedelta, timezone
 from telethon import events
 
 UTC = timezone.utc
 IST = timezone(timedelta(hours=5, minutes=30))
+
+async def get_accurate_now():
+    """Fetch live accurate IST time from world time API to bypass Render clock skew"""
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get("http://worldtimeapi.org/api/timezone/Asia/Kolkata", timeout=2) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    dt_str = data["datetime"] # e.g. 2026-10-21T19:30:00.123456+05:30
+                    return datetime.fromisoformat(dt_str)
+    except Exception:
+        pass
+    # Fallback to local system time if API fails
+    return datetime.now(IST)
 
 def setup(client):
 
@@ -15,8 +30,8 @@ def setup(client):
         message_to_send = event.pattern_match.group(3).strip()
         command_chat_id = event.chat_id
 
-        now_utc = datetime.now(UTC)
-        now_ist = now_utc.astimezone(IST)
+        # Get exact network synchronized IST time
+        now_ist = await get_accurate_now()
         target_dt_ist = None
 
         # Mode A: Relative countdown (e.g., in 10s, in 500ms)
@@ -123,7 +138,7 @@ def setup(client):
 
         card = (
             "```text\n"
-            "╔════「 ⚡ ZERO-LAG ATOMIC SNIPER ⚡ 」════╗\n"
+            "╔════「 ⚡ SYNCED ATOMIC SNIPER ⚡ 」════╗\n"
             "║\n"
             "╠─ 👤 MASTER   :: K E S H A V\n"
             f"╠─ 🎯 TARGET   :: {dest_label}\n"
@@ -135,16 +150,22 @@ def setup(client):
         )
         await event.edit(card)
 
-        # High-Precision Atomic Dispatcher
+        # High-Precision Atomic Dispatcher with Clock Offset Compensation
         async def atomic_dispatcher():
             try:
-                # Convert Target IST time directly to UTC Epoch Timestamp
+                # Calculate server clock offset dynamically against network time
+                local_sys_time = datetime.now(IST).timestamp()
+                network_sync_time = (await get_accurate_now()).timestamp()
+                server_clock_skew = network_sync_time - local_sys_time
+
                 target_utc = target_dt_ist.astimezone(UTC)
                 target_epoch = target_utc.timestamp()
 
                 while True:
-                    # Direct comparison using system epoch
-                    remaining = target_epoch - time.time()
+                    # Apply server skew adjustment to epoch comparison
+                    current_adjusted_time = time.time() + server_clock_skew
+                    remaining = target_epoch - current_adjusted_time
+                    
                     if remaining <= 0:
                         break
                     if remaining > 0.1:
@@ -152,7 +173,7 @@ def setup(client):
                     else:
                         await asyncio.sleep(0.0001)
 
-                # Fire immediately
+                # Fire immediately without any delay
                 if reply_msg_id:
                     await client.send_message(target_dest, message_to_send, reply_to=reply_msg_id)
                 else:
