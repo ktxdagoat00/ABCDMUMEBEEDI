@@ -1,25 +1,9 @@
 import asyncio
 import time
-import aiohttp
 from datetime import datetime, timedelta, timezone
 from telethon import events
 
-UTC = timezone.utc
 IST = timezone(timedelta(hours=5, minutes=30))
-
-async def get_accurate_now():
-    """Fetch live accurate IST time from world time API to bypass Render clock skew"""
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get("http://worldtimeapi.org/api/timezone/Asia/Kolkata", timeout=2) as resp:
-                if resp.status == 200:
-                    data = await resp.json()
-                    dt_str = data["datetime"] # e.g. 2026-10-21T19:30:00.123456+05:30
-                    return datetime.fromisoformat(dt_str)
-    except Exception:
-        pass
-    # Fallback to local system time if API fails
-    return datetime.now(IST)
 
 def setup(client):
 
@@ -30,11 +14,10 @@ def setup(client):
         message_to_send = event.pattern_match.group(3).strip()
         command_chat_id = event.chat_id
 
-        # Get exact network synchronized IST time
-        now_ist = await get_accurate_now()
-        target_dt_ist = None
+        now_ist = datetime.now(IST)
+        target_dt = None
 
-        # Mode A: Relative countdown (e.g., in 10s, in 500ms)
+        # 1. Parse Time (Relative or Absolute Clock Time)
         if time_raw.lower().startswith("in "):
             try:
                 val_str = time_raw.lower().replace("in ", "").strip()
@@ -48,12 +31,11 @@ def setup(client):
                     val = float(val_str[:-1]) * 3600.0
                 else:
                     raise ValueError("Unknown unit")
-                target_dt_ist = now_ist + timedelta(seconds=val)
+                target_dt = now_ist + timedelta(seconds=val)
             except Exception:
-                await event.edit("```text\n[!] Format error. Try: .cron in 10s here Giveaway Msg!\n```")
+                await event.edit("```text\n[!] Format error. Try: .cron in 10s here Hi\n```")
                 return
         else:
-            # Mode B: Clock Time (e.g., 9:00 PM, 03:30:00.500 PM)
             try:
                 time_raw = time_raw.upper()
                 parts = time_raw.split()
@@ -83,21 +65,21 @@ def setup(client):
                 fmt = "%I:%M:%S %p" if ampm_part else "%H:%M:%S"
                 parsed = datetime.strptime(time_str, fmt)
 
-                target_dt_ist = now_ist.replace(
+                target_dt = now_ist.replace(
                     hour=parsed.hour,
                     minute=parsed.minute,
                     second=parsed.second,
                     microsecond=ms * 1000
                 )
 
-                if target_dt_ist <= now_ist:
-                    target_dt_ist += timedelta(days=1)
+                if target_dt <= now_ist:
+                    target_dt += timedelta(days=1)
 
             except Exception as e:
-                await event.edit(f"```text\n[!] Time error: {e}\nTry: .cron 9:00 PM @username YourMsg!\n```")
+                await event.edit(f"```text\n[!] Time error: {e}\nTry: .cron 09:30:00 PM here Hi\n```")
                 return
 
-        # Target Pre-Fetching
+        # 2. Pre-Resolve Target Entity & Message Links (Zero delay during execution)
         target_dest = None
         reply_msg_id = None
         dest_label = target_raw
@@ -114,7 +96,7 @@ def setup(client):
                     internal_chat_id = int("-100" + parts[1])
                     reply_msg_id = int(parts[2])
                     target_dest = await client.get_input_entity(internal_chat_id)
-                    dest_label = f"Reply to Msg #{reply_msg_id} (Private Chat)"
+                    dest_label = f"Reply to Msg #{reply_msg_id}"
                 elif len(parts) >= 2 and not parts[0].lstrip("-").isdigit():
                     group_username = parts[0]
                     reply_msg_id = int(parts[1])
@@ -134,15 +116,15 @@ def setup(client):
             await event.edit(f"```text\n[!] Target resolution failed: {e}\n```")
             return
 
-        wait_sec = (target_dt_ist - now_ist).total_seconds()
+        wait_sec = (target_dt - now_ist).total_seconds()
 
         card = (
             "```text\n"
-            "╔════「 ⚡ SYNCED ATOMIC SNIPER ⚡ 」════╗\n"
+            "╔════「 ⚡ ULTIMATE PRECISION CRON ⚡ 」════╗\n"
             "║\n"
             "╠─ 👤 MASTER   :: K E S H A V\n"
             f"╠─ 🎯 TARGET   :: {dest_label}\n"
-            f"╠─ ⏰ EXECUTE  :: {target_dt_ist.strftime('%I:%M:%S.%f')[:-3]} {target_dt_ist.strftime('%p')} (IST)\n"
+            f"╠─ ⏰ EXECUTE  :: {target_dt.strftime('%I:%M:%S.%f')[:-3]} {target_dt.strftime('%p')} (IST)\n"
             f"╠─ ⏳ DELAY    :: {round(max(0, wait_sec), 3)}s remaining\n"
             "║\n"
             "╚════════════════════════════════════════════════╝\n"
@@ -150,30 +132,30 @@ def setup(client):
         )
         await event.edit(card)
 
-        # High-Precision Atomic Dispatcher with Clock Offset Compensation
+        # 3. High-Precision Execution Engine
         async def atomic_dispatcher():
             try:
-                # Calculate server clock offset dynamically against network time
-                local_sys_time = datetime.now(IST).timestamp()
-                network_sync_time = (await get_accurate_now()).timestamp()
-                server_clock_skew = network_sync_time - local_sys_time
+                target_epoch = target_dt.timestamp()
 
-                target_utc = target_dt_ist.astimezone(UTC)
-                target_epoch = target_utc.timestamp()
-
+                # Phase 1: Coarse sleep until 1 second remaining
                 while True:
-                    # Apply server skew adjustment to epoch comparison
-                    current_adjusted_time = time.time() + server_clock_skew
-                    remaining = target_epoch - current_adjusted_time
-                    
+                    remaining = target_epoch - time.time()
+                    if remaining <= 1.0:
+                        break
+                    await asyncio.sleep(remaining - 0.5)
+
+                # Phase 2: Ultra-tight microsecond spin-lock for the final 1000ms
+                while True:
+                    remaining = target_epoch - time.time()
                     if remaining <= 0:
                         break
-                    if remaining > 0.1:
-                        await asyncio.sleep(remaining - 0.02)
+                    if remaining > 0.02:
+                        await asyncio.sleep(0.001)
                     else:
-                        await asyncio.sleep(0.0001)
+                        # Absolute CPU lock for final 20ms to guarantee zero millisecond drift
+                        pass
 
-                # Fire immediately without any delay
+                # Fire instantly
                 if reply_msg_id:
                     await client.send_message(target_dest, message_to_send, reply_to=reply_msg_id)
                 else:
