@@ -1,71 +1,66 @@
 import os
-import sys
-import glob
 import asyncio
-import logging
-import importlib.util
+from aiohttp import web
 from telethon import TelegramClient
 from telethon.sessions import StringSession
-from aiohttp import web
 
-# Performance logging
-logging.basicConfig(level=logging.WARNING)
+API_ID = os.environ.get("API_ID")
+API_HASH = os.environ.get("API_HASH")
+STRING_SESSION = os.environ.get("STRING_SESSION")
 
-API_ID = int(os.environ.get("API_ID", 0))
-API_HASH = os.environ.get("API_HASH", "")
-SESSION_STRING = os.environ.get("SESSION_STRING", "")
-
-if not API_ID or not API_HASH or not SESSION_STRING:
+if not API_ID or not API_HASH or not STRING_SESSION:
     print("[FATAL] Environment variables missing!")
-    sys.exit(1)
+    exit(1)
 
-client = TelegramClient(StringSession(SESSION_STRING), API_ID, API_HASH)
+try:
+    API_ID = int(API_ID)
+except ValueError:
+    pass
 
-def load_plugins():
-    plugin_files = glob.glob("plugins/*.py")
-    for file_path in plugin_files:
-        name = os.path.splitext(os.path.basename(file_path))[0]
-        if name.startswith("__"):
-            continue
-        try:
-            spec = importlib.util.spec_from_file_location(f"plugins.{name}", file_path)
-            mod = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(mod)
-            if hasattr(mod, "setup"):
-                mod.setup(client)
-            print(f"[+] Loaded plugin: {name}")
-        except Exception as e:
-            print(f"[-] Error loading plugin {name}: {e}")
+client = TelegramClient(StringSession(STRING_SESSION), API_ID, API_HASH)
 
-async def health_check(request):
-    return web.Response(text="Bot Engine Running 24/7 at Peak Speed!")
+# Simple web server to satisfy Render port detection
+async def handle_ping(request):
+    return web.Response(text="Bot is active and running 24/7!")
 
 async def start_web_server():
     app = web.Application()
-    app.router.add_get("/", health_check)
+    app.router.add_get("/", handle_ping)
     runner = web.AppRunner(app)
     await runner.setup()
-    port = int(os.environ.get("PORT", 8080))
+    port = int(os.environ.get("PORT", 10000))
     site = web.TCPSite(runner, "0.0.0.0", port)
     await site.start()
-    print(f"[+] Web engine bound to port {port}")
+    print(f"[✓] Web server bound on port {port}")
 
 async def main():
-    await client.start()
-    load_plugins()
+    # Start the web server first so Render detects the open port immediately
     await start_web_server()
-    print("[+] Master Userbot Online & Multitasking Active!")
+
+    # Load plugins if any
+    import glob
+    import importlib
+    from pathlib import Path
     
-    # Auto-Reconnection & Crash Guard Watchdog
-    while True:
-        try:
-            if not client.is_connected():
-                print("[!] Reconnecting client...")
-                await client.connect()
-            await asyncio.sleep(15)
-        except Exception as e:
-            print(f"[Watchdog Error] {e}")
-            await asyncio.sleep(5)
+    files = glob.glob("plugins/*.py")
+    for name in files:
+        with open(name, "r") as f:
+            code = f.read()
+        if "def setup(client):" in code:
+            mod_name = Path(name).stem
+            try:
+                module = importlib.import_module(f"plugins.{mod_name}")
+                if hasattr(module, "setup"):
+                    module.setup(client)
+            except Exception as e:
+                print(f"[!] Plugin error in {mod_name}: {e}")
+
+    print("[~] Connecting to Telegram...")
+    await client.start()
+    me = await client.get_me()
+    print(f"[✓] Logged in as @{me.username or me.first_name}!")
+
+    await client.run_until_disconnected()
 
 if __name__ == "__main__":
     asyncio.run(main())
