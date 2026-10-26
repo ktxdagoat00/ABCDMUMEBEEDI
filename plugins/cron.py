@@ -1,8 +1,8 @@
 import asyncio
+import time
 from datetime import datetime, timedelta, timezone
 from telethon import events
 
-# IST Timezone fixed
 IST = timezone(timedelta(hours=5, minutes=30))
 
 def setup(client):
@@ -17,25 +17,26 @@ def setup(client):
         now_ist = datetime.now(IST)
         target_dt = None
 
-        # Mode A: Relative countdown (e.g., in 10s)
+        # Mode A: Relative countdown (e.g., in 10s, in 500ms)
         if time_raw.lower().startswith("in "):
             try:
                 val_str = time_raw.lower().replace("in ", "").strip()
-                unit = val_str[-1]
-                val = float(val_str[:-1])
-                if unit == 's':
-                    target_dt = now_ist + timedelta(seconds=val)
-                elif unit == 'm':
-                    target_dt = now_ist + timedelta(minutes=val)
-                elif unit == 'h':
-                    target_dt = now_ist + timedelta(hours=val)
+                if val_str.endswith("ms"):
+                    val = float(val_str[:-2]) / 1000.0
+                elif val_str.endswith("s"):
+                    val = float(val_str[:-1])
+                elif val_str.endswith("m"):
+                    val = float(val_str[:-1]) * 60.0
+                elif val_str.endswith("h"):
+                    val = float(val_str[:-1]) * 3600.0
                 else:
                     raise ValueError("Unknown unit")
+                target_dt = now_ist + timedelta(seconds=val)
             except Exception:
-                await event.edit("```text\n[!] Invalid format. Try: .cron in 10s | here | msg\n```")
+                await event.edit("```text\n[!] Relative time error. Try: .cron in 10s | here | Hi\n```")
                 return
         else:
-            # Mode B: Exact Clock Time (e.g., 03:30 PM)
+            # Mode B: Exact Clock Time with Milliseconds (e.g., 03:30:00.500 PM)
             try:
                 parts = time_raw.split()
                 time_part = parts[0]
@@ -59,52 +60,85 @@ def setup(client):
                     microsecond=ms * 1000
                 )
 
-                # Agar time nikal gaya hai toh kal ke liye set karo
                 if target_dt <= now_ist:
                     target_dt += timedelta(days=1)
 
             except Exception as e:
-                await event.edit(f"```text\n[!] Time format error: {e}\nTry: .cron 03:30:00 PM | here | msg\n```")
+                await event.edit(f"```text\n[!] Time format error: {e}\nTry: .cron 03:30:00.000 PM | here | msg\n```")
                 return
 
-        wait_seconds = (target_dt - now_ist).total_seconds()
-        if wait_seconds < 0:
-            wait_seconds = 0
+        # Safe Target & Post Link Resolution
+        target_dest = None
+        reply_msg_id = None
+        dest_label = target_raw
 
-        # Safe Target Resolution (String aur ID handle)
-        if target_raw.lower() == "here":
-            target_dest = event.chat_id
-            dest_label = "Current Chat"
-        else:
-            try:
-                target_dest = int(target_raw)
-            except ValueError:
-                target_dest = target_raw
-            dest_label = str(target_dest)
+        try:
+            if target_raw.lower() == "here":
+                target_dest = event.chat_id
+                dest_label = "Current Chat"
+            elif "t.me/" in target_raw:
+                clean_link = target_raw.split("t.me/")[-1].strip("/")
+                parts = clean_link.split("/")
+                
+                if parts[0] == "c" and len(parts) >= 3:
+                    target_dest = int("-100" + parts[1])
+                    reply_msg_id = int(parts[2])
+                    dest_label = f"Reply to Msg #{reply_msg_id} (Private)"
+                elif len(parts) >= 2 and not parts[0].lstrip("-").isdigit():
+                    target_dest = parts[0]
+                    if not target_dest.startswith("@"):
+                        target_dest = "@" + target_dest
+                    reply_msg_id = int(parts[1])
+                    dest_label = f"Reply to Msg #{reply_msg_id} in {target_dest}"
+                else:
+                    raise ValueError("Invalid Telegram link format")
+            else:
+                try:
+                    target_dest = int(target_raw)
+                except ValueError:
+                    target_dest = target_raw
+                dest_label = str(target_dest)
+        except Exception as e:
+            await event.edit(f"```text\n[!] Target/Link error: {e}\n```")
+            return
+
+        wait_sec = (target_dt - datetime.now(IST)).total_seconds()
 
         card = (
             "```text\n"
-            "╔════「 ⏱️ 𝗔𝗧𝗢𝗠𝗜𝗖 𝗦𝗖𝗛𝗘𝗗𝗨𝗟𝗘𝗥 ⚡ 」════╗\n"
+            "╔════「 ⚡️ ATOMIC MS-ACCURATE SCHEDULER ⚡️ 」════╗\n"
             "║\n"
             "╠─ 👤 MASTER   :: K E S H A V\n"
             f"╠─ 🎯 TARGET   :: {dest_label}\n"
-            f"╠─ ⏰ EXECUTE  :: {target_dt.strftime('%I:%M:%S %p')} (IST)\n"
-            f"╠─ ⏳ DELAY    :: {round(wait_seconds, 2)}s remaining\n"
+            f"╠─ ⏰ EXECUTE  :: {target_dt.strftime('%I:%M:%S.%f')[:-3]} {target_dt.strftime('%p')} (IST)\n"
+            f"╠─ ⏳ DELAY    :: {round(max(0, wait_sec), 3)}s remaining\n"
             "║\n"
-            "╚═════════════════════════════════════╝\n"
+            "╚════════════════════════════════════════════════╝\n"
             "```"
         )
         await event.edit(card)
 
-        # Bulletproof Background Dispatcher
-        async def background_dispatcher():
+        # Zero-Lag Background Dispatcher with High-Precision Spin-Lock
+        async def atomic_dispatcher():
             try:
-                if wait_seconds > 0:
-                    await asyncio.sleep(wait_seconds)
-                await client.send_message(target_dest, message_to_send)
-            except Exception as err:
-                # Agar fail hua toh user ko chat me error bhejo
-                await client.send_message(command_chat_id, f"```text\n[!] CRON TASK FAILED!\nTarget: {dest_label}\nError: {err}\n```")
+                target_epoch = target_dt.timestamp()
+                while True:
+                    remaining = target_epoch - time.time()
+                    if remaining <= 0:
+                        break
+                    
+                    if remaining > 0.2:
+                        await asyncio.sleep(remaining - 0.1)
+                    else:
+                        await asyncio.sleep(0.001)
 
-        # Start task without blocking the bot
-        asyncio.create_task(background_dispatcher())
+                # Send or reply to specific post instantly on exact microsecond match
+                if reply_msg_id:
+                    await client.send_message(target_dest, message_to_send, reply_to=reply_msg_id)
+                else:
+                    await client.send_message(target_dest, message_to_send)
+
+            except Exception as err:
+                await client.send_message(command_chat_id, f"```text\n[!] CRON FAILED!\nTarget: {dest_label}\nError: {err}\n```")
+
+        asyncio.create_task(atomic_dispatcher())
