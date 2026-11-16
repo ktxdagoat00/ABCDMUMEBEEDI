@@ -44,25 +44,41 @@ def setup(client):
         await event.edit(f"```text\n⏳ Pre-calculating & caching target...\nTarget Time: {target_dt.strftime('%I:%M:%S.%f')[:-3]} {target_dt.strftime('%p')} (IST)\n```")
 
         # 2. Resolve Target Entity & Pre-fetch ahead of time (0 lag preparation)
-        entity = None
+        target_dest = None
         reply_to_msg_id = None
 
         try:
+            # Match post links like t.me/c/12345/6789 or t.me/groupname/6789
             link_match = re.search(r't\.me/(?:c/(\d+)|([a-zA-Z0-9_]+))/(\d+)', target_raw)
             if link_match:
                 if link_match.group(1):
                     chat_part = int("-100" + link_match.group(1))
                 else:
                     chat_part = link_match.group(2)
+                    if not chat_part.startswith("@"):
+                        chat_part = "@" + chat_part
+                
                 reply_to_msg_id = int(link_match.group(3))
-                entity = await client.get_entity(chat_part)
-            else:
-                if target_raw.startswith("-100") or target_raw.isdigit() or target_raw.startswith("-"):
-                    entity = await client.get_entity(int(target_raw))
+
+                # Fetching message caches both entity access_hash and target message ID safely
+                target_msg = await client.get_messages(chat_part, ids=reply_to_msg_id)
+                if target_msg:
+                    target_dest = target_msg.peer_id
                 else:
-                    entity = await client.get_entity(target_raw)
+                    target_dest = chat_part
+            else:
+                if target_raw.lower() == "here":
+                    target_dest = event.chat_id
+                elif target_raw.startswith("-100") or target_raw.lstrip("-").isdigit():
+                    target_dest = int(target_raw)
+                else:
+                    target_dest = target_raw
+                
+                # Warm up entity cache
+                await client.get_entity(target_dest)
+
         except Exception as e:
-            await event.edit(f"```text\n❌ Failed to resolve target ({target_raw}): {e}\n```")
+            await event.edit(f"```text\n❌ Failed to resolve target ({target_raw}): {e}\nMake sure bot is joined in that group!\n```")
             return
 
         # 3. High-Precision Millisecond-Accurate Timer (Active busy-wait spin-lock)
@@ -102,9 +118,9 @@ def setup(client):
 
                 # 4. Fire instantly
                 if reply_to_msg_id:
-                    await client.send_message(entity, msg_content, reply_to=reply_to_msg_id)
+                    await client.send_message(target_dest, msg_content, reply_to=reply_to_msg_id)
                 else:
-                    await client.send_message(entity, msg_content)
+                    await client.send_message(target_dest, msg_content)
 
             except Exception as err:
                 await client.send_message("me", f"```text\n❌ Snipe Failed!\nTarget: {target_raw}\nError: {err}\n```")
