@@ -8,18 +8,11 @@ IST = timezone(timedelta(hours=5, minutes=30))
 
 def setup(client):
 
-    @client.on(events.NewMessage(outgoing=True, pattern=re.compile(r'^\.snipe\b', re.IGNORECASE)))
+    @client.on(events.NewMessage(outgoing=True, pattern=re.compile(r'^\.snipe\s+([^|]+)\|([^|]+)\|(.+)', re.IGNORECASE)))
     async def handle_snipe(event):
-        raw_text = event.raw_text[len('.snipe'):].strip()
-        parts = [p.strip() for p in raw_text.split('/')]
-        
-        if len(parts) < 3:
-            await event.edit("```text\n❌ Format Error!\nUse: .snipe hh:mm:ss am/pm / target / message\n```")
-            return
-
-        time_str = parts[0]
-        target_raw = parts[1]
-        msg_content = "/".join(parts[2:])
+        time_str = event.pattern_match.group(1).strip()
+        target_raw = event.pattern_match.group(2).strip()
+        msg_content = event.pattern_match.group(3).strip()
 
         # 1. Parse Target Time (IST Aware)
         now_ist = datetime.now(IST)
@@ -34,7 +27,7 @@ def setup(client):
                 continue
         
         if not parsed_time:
-            await event.edit(f"```text\n❌ Invalid time format: {time_str}\nUse hh:mm:ss am/pm\n```")
+            await event.edit(f"```text\n❌ Invalid time format: {time_str}\nUse: .snipe hh:mm:ss am/pm | target_link | message\n```")
             return
 
         target_dt = datetime.combine(now_ist.date(), parsed_time).replace(tzinfo=IST)
@@ -48,7 +41,7 @@ def setup(client):
         reply_to_msg_id = None
 
         try:
-            # Matches https://t.me/c/123/456, http://t.me/group/456, or t.me/group/456
+            # Match links like https://t.me/c/12345/6789 or https://t.me/groupname/6789
             link_match = re.search(r'(?:https?://)?t\.me/(?:c/(\d+)|([a-zA-Z0-9_]+))/(\d+)', target_raw)
             if link_match:
                 if link_match.group(1):
@@ -62,7 +55,7 @@ def setup(client):
                 
                 reply_to_msg_id = int(link_match.group(3))
 
-                # Fetching message pre-caches both entity access_hash and target message ID safely
+                # Pre-fetch target message to auto-cache peer access hash & entities
                 target_msg = await client.get_messages(chat_part, ids=reply_to_msg_id)
                 if target_msg:
                     target_dest = target_msg.peer_id
@@ -117,7 +110,7 @@ def setup(client):
                             pass
                         break
 
-                # 4. Fire instantly
+                # 4. Fire instantly as a reply to specified post
                 if reply_to_msg_id:
                     await client.send_message(target_dest, msg_content, reply_to=reply_to_msg_id)
                 else:
