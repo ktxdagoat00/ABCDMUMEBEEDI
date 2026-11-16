@@ -43,24 +43,26 @@ def setup(client):
 
         await event.edit(f"```text\n⏳ Pre-calculating & caching target...\nTarget Time: {target_dt.strftime('%I:%M:%S.%f')[:-3]} {target_dt.strftime('%p')} (IST)\n```")
 
-        # 2. Resolve Target Entity & Pre-fetch ahead of time (0 lag preparation)
+        # 2. Robust Link & Target Resolution
         target_dest = None
         reply_to_msg_id = None
 
         try:
-            # Match post links like t.me/c/12345/6789 or t.me/groupname/6789
-            link_match = re.search(r't\.me/(?:c/(\d+)|([a-zA-Z0-9_]+))/(\d+)', target_raw)
+            # Matches https://t.me/c/123/456, http://t.me/group/456, or t.me/group/456
+            link_match = re.search(r'(?:https?://)?t\.me/(?:c/(\d+)|([a-zA-Z0-9_]+))/(\d+)', target_raw)
             if link_match:
                 if link_match.group(1):
+                    # Private group/channel (-100 prefix required for Telethon)
                     chat_part = int("-100" + link_match.group(1))
                 else:
+                    # Public group/channel username
                     chat_part = link_match.group(2)
                     if not chat_part.startswith("@"):
                         chat_part = "@" + chat_part
                 
                 reply_to_msg_id = int(link_match.group(3))
 
-                # Fetching message caches both entity access_hash and target message ID safely
+                # Fetching message pre-caches both entity access_hash and target message ID safely
                 target_msg = await client.get_messages(chat_part, ids=reply_to_msg_id)
                 if target_msg:
                     target_dest = target_msg.peer_id
@@ -74,7 +76,6 @@ def setup(client):
                 else:
                     target_dest = target_raw
                 
-                # Warm up entity cache
                 await client.get_entity(target_dest)
 
         except Exception as e:
@@ -97,7 +98,7 @@ def setup(client):
         )
         await event.edit(card)
 
-        # Background zero-lag runner so your bot stays responsive
+        # Background zero-lag runner
         async def atomic_sniper():
             try:
                 while True:
@@ -111,7 +112,7 @@ def setup(client):
                     elif diff > 0.05:
                         await asyncio.sleep(0.01)
                     else:
-                        # Active busy-wait for final 50ms to eliminate sleep jitter/lag
+                        # Active busy-wait for final 50ms
                         while time.time() < target_epoch:
                             pass
                         break
